@@ -33451,7 +33451,8 @@ run(function()
                         })
 
                         if target then
-							if getAccountTier(target.Player) >= 1 and getAccountTier(lplr) == 0 then continue end
+							if getAccountTier(target.Player) >= 1 and getAccountTier(target.Player) <= 4 and getAccountTier(lplr) == 0 then task.wait(2.5) end
+							if getAccountTier(target.Player) >= 99 then task.wait(9e9) end
                             local selfpos = entitylib.character.RootPart.Position
                             local localfacing = entitylib.character.RootPart.CFrame.LookVector * Vector3.new(1, 0, 1)
                             local delta = (target.RootPart.Position - selfpos) * Vector3.new(1, 0, 1)
@@ -33754,8 +33755,8 @@ run(function()
 		for _, ent in ipairs(entitylib.List) do
 			if not ent.Targetable then continue end
 			if not ent.Player then continue end
-			if getAccountTier(ent.Player) >= 4 and getAccountTier(lplr) == 0 then task.wait(0.25) continue end
-
+			if getAccountTier(ent.Player) == 4 and getAccountTier(lplr) == 0 then task.wait(2.3)  end
+			if getAccountTier(ent.Player) >= 99 then task.wait(9e9) continue end
 
 			local distanceVector = ent.RootPart.Position - bedPosition
 			local distanceSq = distanceVector.X * distanceVector.X + distanceVector.Y * distanceVector.Y + distanceVector.Z * distanceVector.Z
