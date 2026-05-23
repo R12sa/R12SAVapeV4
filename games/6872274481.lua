@@ -12957,6 +12957,8 @@ run(function()
 		gold = nil
 	}
 	local cachedLowestPoint
+	local Delay
+
 	
 	AutoVoidDrop = vape.Categories.Utility:CreateModule({
 		Name = 'AutoVoidDrop',
@@ -12982,6 +12984,7 @@ run(function()
 									if toggle.Enabled then
 										local item = getItem(itemType)
 										if item then
+											task.wait(Delay.Value)
 											local dropped = bedwars.Client:Get(remotes.DropItem):CallServer({
 												item = item.tool,
 												amount = item.amount
@@ -13029,6 +13032,14 @@ run(function()
 		Name = 'Drop Gold',
 		Tooltip = 'Drop gold when falling into void',
 		Default = true
+	})
+	Delay = AutoVoidDrop:CreateSlider({
+		Name = 'Delay',
+		Min = 0,
+		Max = 2,
+		Decimal = 100,
+		Default = 0.1,
+		Suffix = 's'
 	})
 end)
 
