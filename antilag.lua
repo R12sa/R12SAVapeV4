@@ -65,44 +65,36 @@ function antilag.HttpGet(url, noCache)
 		task.wait(0.1)
 		return antilag.HttpGet(url, noCache)
 	end
-	
-	-- Check debounce timer
-	local timeSinceLastRequest = tick() - lastHttpTime
-	if timeSinceLastRequest < CONFIG.HTTP_REQUEST_DEBOUNCE then
-		task.wait(CONFIG.HTTP_REQUEST_DEBOUNCE - timeSinceLastRequest)
+
+	local cache = fileCache[url]
+	if cache and not noCache and (tick() - cache.timestamp) < CONFIG.HTTP_REQUEST_DEBOUNCE then
+		return cache.data
 	end
-	
+
 	pendingHttpRequests = pendingHttpRequests + 1
-	lastHttpTime = tick()
-	
-	local success, result = pcall(function()
-		return game:HttpGet(url, noCache or false)
-	end)
-	
+	local result = game:HttpGet(url)
 	pendingHttpRequests = pendingHttpRequests - 1
 	
-	if success then
-		return result
-	else
-		warn('[ANTILAG] HTTP Request failed: ' .. tostring(result))
-		return nil
+	if result then
+		fileCache[url] = {data = result, timestamp = tick()}
 	end
+
+	return result
 end
 
---[[ ===== FILE OPERATION OPTIMIZATION ===== ]]
+--[[ ===== FILE OPTIMIZATION ===== ]]
 
 function antilag.ReadFileOptimized(path)
-	-- Return cached result if available
-	if fileCache[path] and fileCache[path].timestamp and (tick() - fileCache[path].timestamp) < 5 then
-		return fileCache[path].data
+	local cache = fileCache[path]
+	if cache then
+		return cache.data
 	end
-	
+
 	local success, result = pcall(function()
 		return readfile(path)
 	end)
-	
+
 	if success and result then
-		-- Cache the result
 		if fileCache[path] then
 			fileCache[path].data = result
 			fileCache[path].timestamp = tick()
@@ -142,7 +134,6 @@ function antilag.ThrottledWait(customInterval)
 	
 	-- Adaptive wait based on current frame time
 	local adjustedInterval = math.max(interval, deltaTime)
-	
 	if adjustedInterval > 0 then
 		task.wait(adjustedInterval)
 	else
@@ -251,7 +242,7 @@ end
 
 function antilag.PrintStatus()
 	local status = antilag.GetStatus()
-	print('[ANTILAG] FPS: ' .. math.floor(status.fps) .. ' | Frame Time: ' .. math.floor(status.frameTime * 1000) .. 'ms | Pending Requests: ' .. status.pendingRequests .. ' | Cached Files: ' .. status.cachedFiles .. ' | Render Frames: ' .. status.renderFrames)
+	print('[ANTILAG] FPS: ' .. math.floor(status.fps) .. ' | Frame Time: ' .. math.floor(status.frameTime * 1000) .. 'ms | Pending Requests: ' .. status.pendingRequests .. ' | Cached Files: ' .. status.cachedFiles .. ' | Render Frames: ' .. status.renderFrameCount)
 end
 
 --[[ ===== CLEANUP ===== ]]
