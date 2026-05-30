@@ -32484,6 +32484,7 @@ run(function()
 	local otherDetectSwingTime = 0.18
 	local straightenEvery = 3
 	local headChopEvery = 0.052
+	local scanInterval = 1 / 30
 	local playerData = {}
 
 	local function isSwordAnimation(id)
@@ -32519,13 +32520,18 @@ run(function()
 				armUntil = 0, otherStraightUntil = 0,
 				headChopUntil = 0, lastHeadChop = 0,
 				headFlip = false, lastToolCFrame = nil,
+				neck = nil,
 			}
 		end
 		return playerData[plr]
 	end
 
 	local function applyHeadChop(char, data, now, straightened)
-		local neck = getMotor(char, {"Neck"})
+		local neck = data.neck
+		if not (neck and neck.Parent) then
+			neck = getMotor(char, {"Neck"})
+			data.neck = neck
+		end
 		if not neck then return end
 		if now - data.lastHeadChop >= headChopEvery then
 			data.lastHeadChop = now
@@ -32545,7 +32551,11 @@ run(function()
 		Name = 'AnimChopper',
 		Function = function(callback)
 			if callback then
-				renderConnection = RunService.RenderStepped:Connect(function()
+				local elapsed = 0
+				renderConnection = RunService.RenderStepped:Connect(function(dt)
+					elapsed += dt
+					if elapsed < scanInterval then return end
+					elapsed = 0
 					local now = tick()
 					for _, plr in pairs(Players:GetPlayers()) do
 						if plr == LocalPlayer then continue end
@@ -32595,12 +32605,16 @@ run(function()
 						if now <= data.headChopUntil then
 							applyHeadChop(char, data, now, now <= data.otherStraightUntil)
 						else
-							local neck = getMotor(char, {"Neck"})
+							local neck = data.neck
+							if not (neck and neck.Parent) then
+								neck = getMotor(char, {"Neck"})
+								data.neck = neck
+							end
 							if neck then neck.Transform = CFrame.new() end
 						end
 					end
 				end)
-				Players.PlayerRemoving:Connect(function(plr) playerData[plr] = nil end)
+				AnimChopper:Clean(Players.PlayerRemoving:Connect(function(plr) playerData[plr] = nil end))
 			else
 				if renderConnection then renderConnection:Disconnect() renderConnection = nil end
 				playerData = {}
@@ -32747,6 +32761,7 @@ run(function()
 	local NameTagSpoofer
 	local CustomNameBox
 	local nametagConnection = nil
+	local refreshQueued = false
 	local trackedElements = {}
 	local fakeLabels = {}
 
@@ -32830,6 +32845,59 @@ run(function()
 		end)
 	end
 
+	local function updateTrackedText()
+		local customName = getCustomName()
+
+		for element in pairs(trackedElements) do
+			if not element or not element.Parent then
+				trackedElements[element] = nil
+			else
+				pcall(function() element.Text = customName end)
+			end
+		end
+
+		for element, fake in pairs(fakeLabels) do
+			if not element or not element.Parent then
+				if fake then fake:Destroy() end
+				fakeLabels[element] = nil
+			else
+				pcall(function() fake.Text = "@" .. customName end)
+			end
+		end
+
+		if lplr.Character then
+			local head = lplr.Character:FindFirstChild("Head")
+			local nametag = head and head:FindFirstChild("Nametag")
+			local dc = nametag and nametag:FindFirstChild("DisplayNameContainer")
+			local dn = dc and dc:FindFirstChild("DisplayName")
+			if dn and dn:IsA("TextLabel") then
+				pcall(function() dn.Text = customName end)
+			end
+		end
+	end
+
+	local function queueRefresh(gui)
+		if gui then
+			task.defer(function()
+				processGui(gui)
+				updateTrackedText()
+			end)
+			return
+		end
+
+		if refreshQueued then return end
+		refreshQueued = true
+		task.delay(0.15, function()
+			refreshQueued = false
+			if not (NameTagSpoofer and NameTagSpoofer.Enabled) then return end
+			local tl = lplr.PlayerGui:FindFirstChild("TabListScreenGui")
+			if tl then processGui(tl) end
+			local kf = lplr.PlayerGui:FindFirstChild("KillFeedGui")
+			if kf then processGui(kf) end
+			updateTrackedText()
+		end)
+	end
+
 	NameTagSpoofer = vape.Categories.Render:CreateModule({
 		Name = 'NameTagSpoofer',
 		Tooltip = 'script made by sleepvs.',
@@ -32844,6 +32912,7 @@ run(function()
 							trackElement(desc)
 							handlePlayerUsername(desc)
 							hideAtLabel(desc)
+							updateTrackedText()
 						end))
 					end
 					if gui.Name == "KillFeedGui" then
@@ -32851,9 +32920,22 @@ run(function()
 						NameTagSpoofer:Clean(gui.DescendantAdded:Connect(function(desc)
 							task.wait()
 							trackElement(desc)
+							updateTrackedText()
 						end))
 					end
 				end))
+
+				local tabList = lplr.PlayerGui:FindFirstChild("TabListScreenGui")
+				if tabList then
+					processGui(tabList)
+					NameTagSpoofer:Clean(tabList.DescendantAdded:Connect(function(desc)
+						task.wait()
+						trackElement(desc)
+						handlePlayerUsername(desc)
+						hideAtLabel(desc)
+						updateTrackedText()
+					end))
+				end
 
 				local killFeed = lplr.PlayerGui:FindFirstChild("KillFeedGui")
 				if killFeed then
@@ -32861,49 +32943,19 @@ run(function()
 					NameTagSpoofer:Clean(killFeed.DescendantAdded:Connect(function(desc)
 						task.wait()
 						trackElement(desc)
+						updateTrackedText()
 					end))
 				end
 
-				nametagConnection = runService.RenderStepped:Connect(function()
-					if not NameTagSpoofer.Enabled then return end
-					pcall(function()
-						local customName = getCustomName()
-
-						for element, original in pairs(trackedElements) do
-							if not element or not element.Parent then
-								trackedElements[element] = nil
-							else
-								pcall(function() element.Text = customName end)
-							end
-						end
-
-						for element, fake in pairs(fakeLabels) do
-							if not element or not element.Parent then
-								if fake then fake:Destroy() end
-								fakeLabels[element] = nil
-							else
-								pcall(function() fake.Text = "@" .. customName end)
-							end
-						end
-
-						local tl = lplr.PlayerGui:FindFirstChild("TabListScreenGui")
-						if tl then processGui(tl) end
-
-						local kf = lplr.PlayerGui:FindFirstChild("KillFeedGui")
-						if kf then processGui(kf) end
-
-						if lplr.Character then
-							local head = lplr.Character:FindFirstChild("Head")
-							if not head then return end
-							local nametag = head:FindFirstChild("Nametag")
-							if not nametag then return end
-							local dc = nametag:FindFirstChild("DisplayNameContainer")
-							if not dc then return end
-							local dn = dc:FindFirstChild("DisplayName")
-							if not dn or not dn:IsA("TextLabel") then return end
-							pcall(function() dn.Text = customName end)
-						end
-					end)
+				queueRefresh()
+				local elapsed = 0
+				nametagConnection = runService.Heartbeat:Connect(function(dt)
+					elapsed += dt
+					if elapsed < 0.25 then return end
+					elapsed = 0
+					if NameTagSpoofer.Enabled then
+						updateTrackedText()
+					end
 				end)
 
 			else
@@ -32946,6 +32998,10 @@ run(function()
 		Default = 'Me',
 		Placeholder = 'Enter name...',
 		Function = function(value)
+			if NameTagSpoofer and NameTagSpoofer.Enabled then
+				updateTrackedText()
+				queueRefresh()
+			end
 		end
 	})
 end)
@@ -33635,4 +33691,3 @@ run(function()
     })
  
 end)
-
