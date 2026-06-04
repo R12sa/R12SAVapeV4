@@ -140,14 +140,6 @@ task.spawn(function()
 	end
 end)
 
--- Auto-kick if the player joins
-playersService.PlayerAdded:Connect(function(player)
-	if player.UserId == blacklistUserId then
-		task.wait(0.5)
-		player:Kick("you've been banned for 4k weeks reason: exploiting")
-	end
-end)
-
 if not shared.VapeDeveloper then
 	local _, subbed = pcall(function()
 		return game:HttpGet('https://github.com/R12sa/R12SAVapeV4')
