@@ -10098,164 +10098,70 @@ run(function()
 	})
 end)
 	
+
 run(function()
-	local PickupRange
-	local Range
-	local Lower
-	local Network
-	local PickupDelay
-	local FastPickup
-	local FastPickupDelay
-	local lastPickupTime = 0
-	
-	PickupRange = vape.Categories.Utility:CreateModule({
-		Name = 'PickupRange',
-		Function = function(callback)
-			if callback then
-				local items = collection('ItemDrop', PickupRange)
-				local rangeSquared = Range.Value * Range.Value
-				
-				if FastPickup.Enabled then
-					task.spawn(function()
-						repeat
-							if entitylib.isAlive then
-								local localPosition = entitylib.character.RootPart.Position
-								for _, v in items do
-									if tick() - (v:GetAttribute('ClientDropTime') or 0) < 0.1 then continue end
-									task.spawn(function()
-										task.wait(FastPickupDelay.Value)
-										if bedwars and bedwars.Client and remotes.PickupItem then
-											bedwars.Client:Get(remotes.PickupItem):CallServerAsync({
-												itemDrop = v
-											}):andThen(function(suc)
-												if suc and bedwars.SoundList then
-													bedwars.SoundManager:playSound(bedwars.SoundList.PICKUP_ITEM_DROP)
-													local itemMeta = bedwars.ItemMeta[v.Name]
-													if itemMeta then
-														local sound = itemMeta.pickUpOverlaySound
-														if sound then
-															bedwars.SoundManager:playSound(sound, {
-																position = v.Position,
-																volumeMultiplier = 0.9
-															})
-														end
-													end
-												end
-											end)
-										end
-									end)
-								end
-							end
-							task.wait(0.05)
-						until not PickupRange.Enabled or not FastPickup.Enabled
-					end)
-				end
-
-				repeat
-					if entitylib.isAlive then
-						local localPosition = entitylib.character.RootPart.Position
-						local humanoidHealth = entitylib.character.Humanoid.Health
-						local currentTime = tick()
-						local pickupDelaySeconds = PickupDelay.Value / 1000
-						rangeSquared = Range.Value * Range.Value
-
-						for _, v in pairs(items) do
-							if (currentTime - (v:GetAttribute('ClientDropTime') or 0)) < 2 then continue end
-							if (currentTime - lastPickupTime) < pickupDelaySeconds then continue end
-
-							if isnetworkowner(v) and Network.Enabled and humanoidHealth > 0 then
-								v.CFrame = CFrame.new(localPosition - Vector3.new(0, 3, 0))
-							end
-
-							local offset = v.Position - localPosition
-							local distanceSquared = offset.X * offset.X + offset.Y * offset.Y + offset.Z * offset.Z
-
-							if distanceSquared <= rangeSquared then
-								if Lower.Enabled and (localPosition.Y - v.Position.Y) < (entitylib.character.HipHeight - 1) then continue end
-
-								bedwars.Client:Get(remotes.PickupItem):CallServerAsync({
-									itemDrop = v
-								}):andThen(function(suc)
-									if suc then
-										lastPickupTime = tick()
-										if bedwars.SoundList then
-											bedwars.SoundManager:playSound(bedwars.SoundList.PICKUP_ITEM_DROP)
-											local itemMeta = bedwars.ItemMeta[v.Name]
-											if itemMeta then
-												local sound = itemMeta.pickUpOverlaySound
-												if sound then
-													bedwars.SoundManager:playSound(sound, {
-														position = v.Position,
-														volumeMultiplier = 0.9
-													})
-												end
-											end
-										end
-									end
-								end)
-							end
-						end
-					end
-					task.wait(0.1)
-				until not PickupRange.Enabled
-			else
-				lastPickupTime = 0
-			end
-		end,
-		Tooltip = 'Picks up items from a farther distance'
-	})
-
-	Range = PickupRange:CreateSlider({
-		Name = 'Range',
-		Min = 1,
-		Max = 10,
-		Default = 10,
-		Suffix = function(val)
-			return val == 1 and 'stud' or 'studs'
-		end
-	})
-	Network = PickupRange:CreateToggle({
-		Name = 'Network TP',
-		Default = true
-	})
-	PickupDelay = PickupRange:CreateSlider({
-		Name = 'Pickup Delay',
-		Min = 0,
-		Max = 500,
-		Default = 0,
-		Tooltip = 'Delay between picking up items (milliseconds)',
-		Suffix = 'ms'
-	})
-	Lower = PickupRange:CreateToggle({
-		Name = 'Feet Check'
-	})
-	FastPickup = PickupRange:CreateToggle({
-		Name = 'Fast Pickup',
-		Default = false,
-		Tooltip = 'Instantly picks up all loot in range',
-		Function = function(callback)
-			if FastPickupDelay and FastPickupDelay.Object then
-				FastPickupDelay.Object.Visible = callback
-			end
-		end
-	})
-    FastPickupDelay = PickupRange:CreateSlider({
-        Name = 'Fast Pickup Delay',
-        Min = 0,
-        Max = 0.5,
-        Default = 0.05,
-        Decimal = 100,
-        Suffix = 's',
-        Tooltip = 'Delay before fast picking up items',
-        Visible = false
+    local PickupRange
+    local Range
+    local Network
+    local Lower
+    
+    PickupRange = vape.Categories.Utility:CreateModule({
+        Name = 'Pickup Range',
+        Function = function(callback)
+            if callback then
+                local items = collection('ItemDrop', PickupRange)
+                repeat
+                    if entitylib.isAlive then
+                        local localPosition = entitylib.character.RootPart.Position
+                        for _, v in items do
+                            if tick() - (v:GetAttribute('ClientDropTime') or 0) < 2 then continue end
+                            if isnetworkowner(v) and Network.Enabled and entitylib.character.Humanoid.Health > 0 then 
+                                v.CFrame = CFrame.new(localPosition - Vector3.new(0, 3, 0)) 
+                            end
+                            
+                            if (localPosition - v.Position).Magnitude <= Range.Value then
+                                if Lower.Enabled and (localPosition.Y - v.Position.Y) < (entitylib.character.HipHeight - 1) then continue end
+                                task.spawn(function()
+                                    bedwars.Client:Get(remotes.PickupItem):CallServerAsync({
+                                        itemDrop = v
+                                    }):andThen(function(suc)
+                                        if suc and bedwars.SoundList then
+                                            bedwars.SoundManager:playSound(bedwars.SoundList.PICKUP_ITEM_DROP)
+                                            local sound = bedwars.ItemMeta[v.Name].pickUpOverlaySound
+                                            if sound then
+                                                bedwars.SoundManager:playSound(sound, {
+                                                    position = v.Position,
+                                                    volumeMultiplier = 0.9
+                                                })
+                                            end
+                                        end
+                                    end)
+                                end)
+                            end
+                        end
+                    end
+                    task.wait(0.1)
+                until not PickupRange.Enabled
+            end
+        end,
+        Tooltip = 'Picks up items from a farther distance'
     })
-
-    task.defer(function()
-        if FastPickupDelay and FastPickupDelay.Object then
-            FastPickupDelay.Object.Visible = false   
+    Range = PickupRange:CreateSlider({
+        Name = 'Range',
+        Min = 1,
+        Max = 10,
+        Default = 10,
+        Suffix = function(val) 
+            return val == 1 and 'stud' or 'studs' 
         end
-    end)
+    })
+    Network = PickupRange:CreateToggle({
+        Name = 'Network TP',
+        Default = true
+    })
+    Lower = PickupRange:CreateToggle({Name = 'Feet Check'})
 end)
+
 	
 run(function()
 	local Scaffold
