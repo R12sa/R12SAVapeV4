@@ -45288,7 +45288,6 @@ end)
 -- Item Suspend: freeze your dropped items in the void at Y = -100 and return them to you on disable
 run(function()
     local ItemSuspend
-    local ReturnOnDisable -- kept implicit behavior (always return), no UI toggle required
     local VOID_Y = -100
     local frozenItems = {}
 
@@ -45299,19 +45298,17 @@ run(function()
                 local items = collection('ItemDrop', ItemSuspend)
                 repeat
                     if entitylib.isAlive then
-                        local localPosition = entitylib.character.RootPart.Position
-                        for _, v in items do
+                        for _, v in pairs(items) do
                             if not v or not v.Parent then continue end
 
-                            -- Only consider items that were dropped by this client (ClientDropTime attribute exists)
-                            local clientDropTime = v.GetAttribute and v:GetAttribute('ClientDropTime')
+                            -- Only consider items that were dropped by this client
+                            local clientDropTime = v:GetAttribute and v:GetAttribute('ClientDropTime')
                             if clientDropTime then
-                                -- If the item fell into the void (or below VOID_Y), freeze it at VOID_Y
-                                if v.Position.Y <= VOID_Y then
+                                -- If the item fell into the void (Y <= VOID_Y), freeze it at VOID_Y
+                                if v.Position and v.Position.Y <= VOID_Y then
                                     if not v:GetAttribute('FrozenByItemSuspend') then
                                         pcall(function()
                                             v.CFrame = CFrame.new(v.Position.X, VOID_Y, v.Position.Z)
-                                            -- zero velocity (AssemblyLinearVelocity preferred)
                                             if v.AssemblyLinearVelocity ~= nil then
                                                 v.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                                             else
@@ -45330,7 +45327,7 @@ run(function()
                 until not ItemSuspend.Enabled
 
                 -- Module disabled: teleport frozen items back to the player and unfreeze them
-                local returnPosition = nil
+                local returnPosition
                 if entitylib.isAlive and entitylib.character and entitylib.character.RootPart then
                     returnPosition = entitylib.character.RootPart.Position
                 end
@@ -45351,6 +45348,7 @@ run(function()
                         end)
                     end
                 end
+
                 -- clear table
                 frozenItems = {}
             end
@@ -45358,6 +45356,22 @@ run(function()
         Tooltip = 'Freeze your dropped items in the void (Y <= -100) and return them to you when disabled'
     })
 
-    -- No range or network TP controls: loot will not teleport to you while the module is active
+    -- Keep a small UI label showing the freeze Y
     ItemSuspend:CreateLabel({ Name = 'Frozen Y', Text = tostring(VOID_Y) })
+
+    -- Hook into pickup to unfreeze items when pickup succeeds, using a safe promise pattern
+    -- (If your environment calls pickup from here, integrate this pattern where you call the remote.)
+    -- Example safe-use snippet (replace usage where pickup is triggered):
+    --
+    -- local promise = bedwars.Client:Get(remotes.PickupItem):CallServerAsync({ itemDrop = v })
+    -- promise:andThen(function(suc)
+    --     if suc and v and v.Parent and v:GetAttribute('FrozenByItemSuspend') then
+    --         pcall(function()
+    --             v.Anchored = false
+    --             v:SetAttribute('FrozenByItemSuspend', nil)
+    --             frozenItems[v] = nil
+    --         end)
+    --     end
+    -- end)
+
 end)
