@@ -10099,12 +10099,15 @@ run(function()
 end)
 	
 
+-- Pickup Range with "Freeze at Void" support
 run(function()
     local PickupRange
     local Range
     local Network
     local Lower
-    
+    local FreezeVoid
+    local VoidHeight
+
     PickupRange = vape.Categories.Utility:CreateModule({
         Name = 'Pickup Range',
         Function = function(callback)
@@ -10115,6 +10118,35 @@ run(function()
                         local localPosition = entitylib.character.RootPart.Position
                         for _, v in items do
                             if tick() - (v:GetAttribute('ClientDropTime') or 0) < 2 then continue end
+
+                            -- Freeze-in-void handling
+                            if FreezeVoid.Enabled then
+                                local voidY = VoidHeight.Value
+                                if v.Position.Y <= voidY then
+                                    -- snap to the configured void height and freeze
+                                    local newCFrame = CFrame.new(v.Position.X, voidY, v.Position.Z)
+                                    pcall(function()
+                                        v.CFrame = newCFrame
+                                        -- zero velocity (AssemblyLinearVelocity for newer engine, fallback to Velocity)
+                                        if v.AssemblyLinearVelocity then
+                                            v.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                                        else
+                                            v.Velocity = Vector3.new(0, 0, 0)
+                                        end
+                                        v.Anchored = true
+                                        v:SetAttribute('FrozenByPickupRange', true)
+                                    end)
+                                else
+                                    -- if it was previously frozen but is now above void, unfreeze
+                                    if v:GetAttribute('FrozenByPickupRange') then
+                                        pcall(function()
+                                            v.Anchored = false
+                                            v:SetAttribute('FrozenByPickupRange', nil)
+                                        end)
+                                    end
+                                end
+                            end
+
                             if isnetworkowner(v) and Network.Enabled and entitylib.character.Humanoid.Health > 0 then 
                                 v.CFrame = CFrame.new(localPosition - Vector3.new(0, 3, 0)) 
                             end
@@ -10135,6 +10167,13 @@ run(function()
                                                 })
                                             end
                                         end
+                                        -- If we froze this item, unfreeze it when the pickup succeeds
+                                        if suc and v and v.Parent and v:GetAttribute('FrozenByPickupRange') then
+                                            pcall(function()
+                                                v.Anchored = false
+                                                v:SetAttribute('FrozenByPickupRange', nil)
+                                            end)
+                                        end
                                     end)
                                 end)
                             end
@@ -10142,6 +10181,16 @@ run(function()
                     end
                     task.wait(0.1)
                 until not PickupRange.Enabled
+
+                -- Cleanup: unfreeze any items we froze when the module is turned off
+                for _, v in items do
+                    if v and v:GetAttribute and v:GetAttribute('FrozenByPickupRange') then
+                        pcall(function()
+                            v.Anchored = false
+                            v:SetAttribute('FrozenByPickupRange', nil)
+                        end)
+                    end
+                end
             end
         end,
         Tooltip = 'Picks up items from a farther distance'
@@ -10160,6 +10209,18 @@ run(function()
         Default = true
     })
     Lower = PickupRange:CreateToggle({Name = 'Feet Check'})
+    FreezeVoid = PickupRange:CreateToggle({
+        Name = 'Freeze at Void',
+        Default = true,
+        Tooltip = 'If enabled, items falling below the Void Height will be frozen in mid-air.'
+    })
+    VoidHeight = PickupRange:CreateSlider({
+        Name = 'Void Height',
+        Min = -500,
+        Max = 500,
+        Default = -100,
+        Suffix = function(val) return tostring(val) .. ' Y' end
+    })
 end)
 
 	
