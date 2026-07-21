@@ -45173,18 +45173,36 @@ run(function()
         if not meta or not meta.block then return end
         local tool = store.tools[meta.block.breakType]
         if not tool then return end
-        local slot = getHotbar(tool.tool)
-        if slot and store.inventory.hotbarSlot ~= slot then
-            bedwars.Store:dispatch({
-                type = 'InventorySelectHotbarSlot',
-                slot = slot
-            })
+        local switched = false
+        for i, v in store.inventory.hotbar do
+            if v.item and v.item.tool == tool.tool then
+                if i ~= (store.inventory.hotbarSlot + 1) then
+                    hotbarSwitch(i - 1)
+                end
+                switched = true
+                break
+            end
+        end
+        if not switched then
+            switchItem(tool.tool)
         end
     end
 
     local function readHP(block, gridPos)
         local data = bedwars.BlockController:getStore():getBlockData(gridPos)
         return data and (data:GetAttribute('1') or data:GetAttribute('Health')) or block:GetAttribute('Health') or block:GetAttribute('MaxHealth') or 0
+    end
+
+    local function getKDBlockHits(block, blockPos)
+        if not block then return 0 end
+        local meta = bedwars.ItemMeta[block.Name]
+        local breakType = meta and meta.block and meta.block.breakType
+        if not breakType then return 1 end
+        local tool = store.tools[breakType]
+        local toolMeta = tool and bedwars.ItemMeta[tool.itemType]
+        local breakPower = toolMeta and toolMeta.breakBlock and toolMeta.breakBlock[breakType] or 2
+        local health = readHP(block, bedwars.BlockController:getBlockPosition(blockPos))
+        return health / math.max(breakPower, 0.001)
     end
 
     local function spawnBar(block)
@@ -45359,7 +45377,7 @@ run(function()
                         if not nb then exposed = true end
                         continue
                     end
-                    local h = useDistance and (origin - Vector3.new(np.X, origin.Y, np.Z)).Magnitude or getBlockHits(nb, np)
+                    local h = useDistance and (origin - Vector3.new(np.X, origin.Y, np.Z)).Magnitude or getKDBlockHits(nb, np)
                     local nc = pick[1] + h
                     if nc < (costs[np] or math.huge) then
                         costs[np] = nc
@@ -45397,7 +45415,7 @@ run(function()
                 if useDistance and origin then
                     total += (origin - Vector3.new(pos.X, origin.Y, pos.Z)).Magnitude
                 else
-                    total += getBlockHits(block, pos)
+                    total += getKDBlockHits(block, pos)
                 end
             end
         end
