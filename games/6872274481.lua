@@ -28142,6 +28142,9 @@ run(function()
 	local ExtendedRange
 	local ExtendedRangeSlider
 	local WallCheck
+	local TargetMode
+	local Prediction
+	local HitRate
 	local silentAttackRemote
 	local lastHitTime = 0
 	local BASE_RANGE = 13.8
@@ -28200,16 +28203,26 @@ run(function()
 
 	local function canHitWithHitreg()
 		local currentTime = tick()
-		local hitreg = math.random(340, 350) / 10
-		local delayBetweenHits = 10 / hitreg
+		local hitreg = (HitRate and HitRate.Value or 34) + (math.random(-3, 3) / 10)
+		local delayBetweenHits = 10 / math.max(hitreg, 1)
 		if currentTime - lastHitTime >= delayBetweenHits then
-			lastHitTime = lastHitTime + delayBetweenHits
-			if currentTime - lastHitTime > delayBetweenHits then
-				lastHitTime = currentTime
-			end
+			lastHitTime = currentTime
 			return true
 		end
 		return false
+	end
+
+	local function getSilentTargetPosition(ent, dist)
+		local root = ent.RootPart
+		local targetPos = root.Position
+		local velocity = root.AssemblyLinearVelocity or root.Velocity or Vector3.zero
+		local predictionAmount = Prediction and Prediction.Value or 0
+
+		if predictionAmount > 0 then
+			targetPos += velocity * math.clamp((dist / 55) * predictionAmount, 0, 0.18)
+		end
+
+		return targetPos
 	end
 
 	local function gatherSilentTargets(selfpos, maxRange)
@@ -28223,10 +28236,26 @@ run(function()
 			local dist = (ent.RootPart.Position - selfpos).Magnitude
 			if dist <= maxRange then
 				if WallCheck and WallCheck.Enabled and entitylib.Wallcheck(selfpos, ent.RootPart.Position, true) then continue end
-				table.insert(targets, {ent = ent, dist = dist})
+				local health = ent.Health or 100
+				local velocity = ent.RootPart.AssemblyLinearVelocity or ent.RootPart.Velocity or Vector3.zero
+				table.insert(targets, {
+					ent = ent,
+					dist = dist,
+					health = health,
+					score = (dist * 1.35) + (health * 0.18) + math.min(velocity.Magnitude, 28) * 0.08
+				})
 			end
 		end
-		table.sort(targets, function(a, b) return a.dist < b.dist end)
+		table.sort(targets, function(a, b)
+			local mode = TargetMode and TargetMode.Value or 'Smart'
+			if mode == 'Health' then
+				return a.health == b.health and a.dist < b.dist or a.health < b.health
+			end
+			if mode == 'Distance' then
+				return a.dist < b.dist
+			end
+			return a.score < b.score
+		end)
 		return targets
 	end
 
@@ -28268,7 +28297,7 @@ run(function()
 					local ent = targets[1].ent
 					if not ent.RootPart then continue end
 
-					local targetPos = ent.RootPart.Position
+					local targetPos = getSilentTargetPosition(ent, targets[1].dist)
 					local camPos = gameCamera.CFrame.Position
 					local dir = (targetPos - camPos).Unit
 
@@ -28293,6 +28322,30 @@ run(function()
 	WallCheck = SilentAura:CreateToggle({
 		Name = 'Wall Check',
 		Tooltip = 'Stops SilentAura from attacking targets behind walls.'
+	})
+
+	TargetMode = SilentAura:CreateDropdown({
+		Name = 'Target Mode',
+		List = {'Smart', 'Distance', 'Health'},
+		Tooltip = 'Smart balances distance, health and movement speed.'
+	})
+
+	Prediction = SilentAura:CreateSlider({
+		Name = 'Prediction',
+		Min = 0,
+		Max = 1,
+		Default = 0.35,
+		Decimal = 100,
+		Suffix = 'x'
+	})
+
+	HitRate = SilentAura:CreateSlider({
+		Name = 'Hit Rate',
+		Min = 28,
+		Max = 38,
+		Default = 34,
+		Decimal = 10,
+		Suffix = 'hz'
 	})
 
 	ExtendedRange = SilentAura:CreateToggle({
