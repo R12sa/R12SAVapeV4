@@ -28145,6 +28145,7 @@ run(function()
 	local TargetMode
 	local Prediction
 	local HitRate
+	local MaxAngle
 	local silentAttackRemote
 	local lastHitTime = 0
 	local loopToken = 0
@@ -28237,6 +28238,15 @@ run(function()
 			local dist = (ent.RootPart.Position - selfpos).Magnitude
 			if dist <= maxRange then
 				if WallCheck and WallCheck.Enabled and entitylib.Wallcheck(selfpos, ent.RootPart.Position, true) then continue end
+				
+				-- Angle check
+				if MaxAngle and MaxAngle.Value < 360 then
+					local localfacing = entitylib.character.RootPart.CFrame.LookVector * Vector3.new(1, 0, 1)
+					local delta = (ent.RootPart.Position - selfpos)
+					local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
+					if angle > (math.rad(MaxAngle.Value) / 2) then continue end
+				end
+				
 				local health = ent.Health or 100
 				local velocity = ent.RootPart.AssemblyLinearVelocity or ent.RootPart.Velocity or Vector3.zero
 				table.insert(targets, {
@@ -28383,6 +28393,14 @@ run(function()
 		Suffix = function(val)
 			return val == 1 and 'stud' or 'studs'
 		end
+	})
+
+	MaxAngle = SilentAura:CreateSlider({
+		Name = 'Max Angle',
+		Min = 1,
+		Max = 360,
+		Default = 360,
+		Tooltip = 'Maximum angle to attack targets. 360 = all directions.'
 	})
 end)
 
