@@ -28205,8 +28205,8 @@ run(function()
 
 	local function canHitWithHitreg()
 		local currentTime = tick()
-		local hitreg = (HitRate and HitRate.Value or 60)
-		local delayBetweenHits = 1 / math.max(hitreg, 1)
+		local hitreg = (HitRate and HitRate.Value or 34) + (math.random(-3, 3) / 10)
+		local delayBetweenHits = 10 / math.max(hitreg, 1)
 		if currentTime - lastHitTime >= delayBetweenHits then
 			lastHitTime = currentTime
 			return true
@@ -28290,7 +28290,7 @@ run(function()
 			local activeToken = loopToken
 			task.spawn(function()
 				repeat
-					task.wait(1 / 120)
+					task.wait(1 / 60)
 					if not SilentAura.Enabled then break end
 					if activeToken ~= loopToken then break end
 
@@ -28367,10 +28367,10 @@ run(function()
 
 	HitRate = SilentAura:CreateSlider({
 		Name = 'Hit Rate',
-		Min = 40,
-		Max = 120,
-		Default = 80,
-		Decimal = 1,
+		Min = 28,
+		Max = 38,
+		Default = 34,
+		Decimal = 10,
 		Suffix = 'hz'
 	})
 
@@ -28403,6 +28403,8 @@ run(function()
 		Tooltip = 'Maximum angle to attack targets. 360 = all directions.'
 	})
 end)
+
+
 run(function()
 	local Viewmodel
 	local Depth
