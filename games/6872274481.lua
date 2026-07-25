@@ -26641,19 +26641,28 @@ end)
 
 run(function()
 	local InfKrystal
+	local lastUpdateTime = 0
+	local UPDATE_INTERVAL = 0.016 -- ~60 FPS
+	
 	InfKrystal = vape.Categories.Kits:CreateModule({
 		Name = 'InfKrystal',
 		Tooltip = 'infinfinf',
 		Function = function(callback)
 			if callback then
 				runService:BindToRenderStep('InfiniteKrystalMovement', Enum.RenderPriority.Character.Value + 2, function()
-					store.lastKrystalUpdateCheck = tick()
-					local suc, res = pcall(function()
-						bedwars.GlacialSkaterController:updateMomentum(100, "newValue")
-					end)
-					if not suc then
-						warn(`[AEROV4 MODULE ISSUE]: [Module - InfKrystal (Starting to update Momentum)] [Error]: {res}`)
-						runService:UnbindFromRenderStep('InfiniteKrystalMovement')
+					local currentTime = tick()
+					-- Only update if enough time has passed
+					if currentTime - lastUpdateTime >= UPDATE_INTERVAL then
+						lastUpdateTime = currentTime
+						store.lastKrystalUpdateCheck = currentTime
+						
+						local suc, res = pcall(function()
+							bedwars.GlacialSkaterController:updateMomentum(100, "newValue")
+						end)
+						if not suc then
+							warn(`[AEROV4 MODULE ISSUE]: [Module - InfKrystal (Starting to update Momentum)] [Error]: {res}`)
+							runService:UnbindFromRenderStep('InfiniteKrystalMovement')
+						end
 					end
 				end)
 			else
@@ -26669,7 +26678,6 @@ run(function()
 		end
 	})
 end)
-
 run(function()
 	local AntiEffects
 	local AntiDizzy
