@@ -13081,7 +13081,7 @@ run(function()
 	WallCheck = Breaker:CreateToggle({
 		Name = 'Wall Check',
 		Default = false,
-		Tooltip = 'Only breaks blocks visible from your camera - prevents breaking through walls'
+		Tooltip = 'Camera-aware block breaking — only breaks blocks visible from your camera, never through walls'
 	})
 
 	task.defer(function()
@@ -13090,6 +13090,7 @@ run(function()
 		end
 	end)
 end)
+	
 
 																																
 run(function()
