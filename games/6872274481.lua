@@ -12291,10 +12291,15 @@ run(function()
 		for _, b in store.blocks do
 			if b and b.Parent then table.insert(list, b) end
 		end
-		losFilter.FilterDescendantsInstances = list
+		if #list > 0 then
+			losFilter.FilterDescendantsInstances = list
+		end
 	end
 
 	local function isVisible(worldPos)
+		if not losFilter or not losFilter.FilterDescendantsInstances or #losFilter.FilterDescendantsInstances == 0 then
+			return true
+		end
 		local eye = gameCamera.CFrame.Position
 		for _, off in {
 			Vector3.zero,
@@ -12765,7 +12770,7 @@ run(function()
 				end
 				
 				task.spawn(hookFreezeController)
-				task.spawn(refreshFilter)
+				refreshFilter()
 				local beds = collection('bed', Breaker)
 				local luckyblock = collection('LuckyBlock', Breaker)
 				local ironores = collection('iron_ore_mesh_block', Breaker)
@@ -13077,9 +13082,7 @@ run(function()
 		end
 	end)
 end)
-	
 
-	
 
 																																
 run(function()
