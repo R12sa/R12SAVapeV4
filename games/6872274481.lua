@@ -30045,6 +30045,12 @@ run(function()
 end)
 
 run(function()
+    local collectionService = game:GetService("CollectionService")
+    local playersService = game:GetService("Players")
+    local runService = game:GetService("RunService")
+    local lplr = playersService.LocalPlayer
+    local gameCamera = workspace.CurrentCamera
+    
     local BedAssist = {Enabled = false}
     local bedassistrange = {Value = 30}
     local bedassistsmoothness = {Value = 6}
@@ -30053,6 +30059,7 @@ run(function()
     local bedassistshopcheck = {Enabled = false}
 	local bedassisthandcheck = {Enabled = false}
 	local bedassistlowestblock = {Enabled = false}
+	
 	local function getBedAimSpeed(speedVal, dt)
 		local baseSpeed = 0.01
 		local multiplier = 1.35
@@ -30271,6 +30278,8 @@ run(function()
         end
     end))
 end)
+
+				
 
 run(function()
 	local DamageIndicator
