@@ -12240,10 +12240,6 @@ local function safeIsBreakable(pos)
     return ok and result
 end
 
--- Breaker with improved bed-defense handling:
--- Prefer breaking blocks along the player->bed line (cover blocks) before breaking a bed,
--- preventing the breaker from mining straight through small holes in defenses.
-
 run(function()
 	local Breaker
 	local Range
@@ -12284,7 +12280,6 @@ run(function()
 	local breakabilityCache = {}
 	local BREAK_CACHE_TTL = 0.5
 	local losFilter
-	local WallCheck
 
 	local function refreshFilter()
 		if not losFilter then
@@ -12550,10 +12545,8 @@ run(function()
 			return false 
 		end
 
-		if WallCheck and WallCheck.Enabled then
-			if not isVisible(v.Position) then
-				return false
-			end
+		if not isVisible(v.Position) then
+			return false
 		end
 		
 		return true
@@ -13078,18 +13071,14 @@ run(function()
 		Tooltip = 'only break blocks within this angle of your look direction 360 = all directions'
 	})
 
-	WallCheck = Breaker:CreateToggle({
-		Name = 'Wall Check',
-		Default = false,
-		Tooltip = 'Camera-aware block breaking — only breaks blocks visible from your camera, never through walls'
-	})
-
 	task.defer(function()
 		if CustomHealth and CustomHealth.Object then
 			CustomHealth.Object.Visible = Effect.Enabled
 		end
 	end)
 end)
+	
+
 	
 
 																																
