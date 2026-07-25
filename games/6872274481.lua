@@ -12283,6 +12283,39 @@ run(function()
 	local cachedTeammatesTime = 0
 	local breakabilityCache = {}
 	local BREAK_CACHE_TTL = 0.5
+	local losFilter
+	local WallCheck
+
+	local function refreshFilter()
+		if not losFilter then
+			losFilter = RaycastParams.new()
+			losFilter.FilterType = Enum.RaycastFilterType.Include
+			losFilter.RespectCanCollide = false
+		end
+		local list = {}
+		for _, b in store.blocks do
+			if b and b.Parent then table.insert(list, b) end
+		end
+		losFilter.FilterDescendantsInstances = list
+	end
+
+	local function isVisible(worldPos)
+		local eye = gameCamera.CFrame.Position
+		for _, off in {
+			Vector3.zero,
+			Vector3.new(1.35, 0, 0), Vector3.new(-1.35, 0, 0),
+			Vector3.new(0, 1.35, 0), Vector3.new(0, -1.35, 0),
+			Vector3.new(0, 0, 1.35), Vector3.new(0, 0, -1.35)
+		} do
+			local probe = worldPos + off
+			local ray = probe - eye
+			local hit = workspace:Raycast(eye, ray, losFilter)
+			if not hit then return true end
+			if (hit.Position - eye).Magnitude >= ray.Magnitude - 1.5 then return true end
+			if hit.Instance and (hit.Instance.Position - worldPos).Magnitude < 2.5 then return true end
+		end
+		return false
+	end
 
 	local function cachedIsBreakable(v)
 		local now = tick()
@@ -12516,6 +12549,12 @@ run(function()
 		if LimitItem.Enabled and not (store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name].breakBlock) then 
 			return false 
 		end
+
+		if WallCheck and WallCheck.Enabled then
+			if not isVisible(v.Position) then
+				return false
+			end
+		end
 		
 		return true
 	end
@@ -12733,6 +12772,7 @@ run(function()
 				end
 				
 				task.spawn(hookFreezeController)
+				task.spawn(refreshFilter)
 				local beds = collection('bed', Breaker)
 				local luckyblock = collection('LuckyBlock', Breaker)
 				local ironores = collection('iron_ore_mesh_block', Breaker)
@@ -12779,6 +12819,7 @@ run(function()
 					task.wait(1 / math.clamp(UpdateRate.Value, 1, 60))
 					if not Breaker.Enabled then break end
 					if entitylib.isAlive then
+						refreshFilter()
 						local localPosition = entitylib.character.RootPart.Position
 
 						if Bed.Enabled and YetiBreaker and YetiBreaker.Enabled then
@@ -13037,13 +13078,19 @@ run(function()
 		Tooltip = 'only break blocks within this angle of your look direction 360 = all directions'
 	})
 
+	WallCheck = Breaker:CreateToggle({
+		Name = 'Wall Check',
+		Default = false,
+		Tooltip = 'Only breaks blocks visible from your camera - prevents breaking through walls'
+	})
+
 	task.defer(function()
 		if CustomHealth and CustomHealth.Object then
 			CustomHealth.Object.Visible = Effect.Enabled
 		end
 	end)
 end)
-	
+
 																																
 run(function()
 	local FPSBoost
