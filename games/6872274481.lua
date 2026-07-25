@@ -30055,7 +30055,19 @@ run(function()
     local aimfuncs = {
         Simple = function(localcframe, pos, fps)
             local rng = Random.new()
-            return localcframe:Lerp(CFrame.lookAt(localcframe.p, pos + Vector3.new((rng:NextNumber() - 0.5) * Shake.Value * fps, (rng:NextNumber() - 0.5) * Shake.Value * fps, (rng:NextNumber() - 0.5) * Shake.Value * fps)), Speed.Value * fps), Speed.Value
+            return localcframe:Lerp(
+                CFrame.lookAt(
+                    localcframe.p,
+                    pos
+                        + Vector3.new(
+                            (rng:NextNumber() - 0.5) * Shake.Value * fps,
+                            (rng:NextNumber() - 0.5) * Shake.Value * fps,
+                            (rng:NextNumber() - 0.5) * Shake.Value * fps
+                        )
+                ),
+                Speed.Value * fps
+            ),
+                Speed.Value
         end,
         Adaptive = function(localcframe, pos, fps)
             local prog, rng = ease(math.min((tick() - started) / (1 / (Speed.Value * 0.5)), 1)), Random.new()
@@ -30085,7 +30097,7 @@ run(function()
         local cost, pos = math.huge, nil
         local mag = 9e9
     
-        local positions = (handler and handler:getContainedPositions(block) or {block.Position / 3})
+        local positions = (handler and handler:getContainedPositions(block) or { block.Position / 3 })
     
         for _, v in positions do
             local dpos, dcost = calculatePath(block, v * 3, breakmethods[Sort.Value], Angle.Value, getMousePosition())
@@ -30148,7 +30160,9 @@ run(function()
                                         local campos, vis = gameCamera:WorldToViewportPoint(pos)
     
                                         if vis then
-                                            local vec2 = (Vector2.new(campos.X, campos.Y) - inputService:GetMouseLocation()) * (speed * dt)
+                                            local vec2 = (
+                                                Vector2.new(campos.X, campos.Y) - inputService:GetMouseLocation()
+                                            ) * (speed * dt)
                                             mousemoverel(vec2.X, vec2.Y)
                                         end
                                     else
