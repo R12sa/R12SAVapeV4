@@ -12279,43 +12279,6 @@ run(function()
 	local cachedTeammatesTime = 0
 	local breakabilityCache = {}
 	local BREAK_CACHE_TTL = 0.5
-	local losFilter
-
-	local function refreshFilter()
-		if not losFilter then
-			losFilter = RaycastParams.new()
-			losFilter.FilterType = Enum.RaycastFilterType.Include
-			losFilter.RespectCanCollide = false
-		end
-		local list = {}
-		for _, b in store.blocks do
-			if b and b.Parent then table.insert(list, b) end
-		end
-		if #list > 0 then
-			losFilter.FilterDescendantsInstances = list
-		end
-	end
-
-	local function isVisible(worldPos)
-		if not losFilter or not losFilter.FilterDescendantsInstances or #losFilter.FilterDescendantsInstances == 0 then
-			return true
-		end
-		local eye = gameCamera.CFrame.Position
-		for _, off in {
-			Vector3.zero,
-			Vector3.new(1.35, 0, 0), Vector3.new(-1.35, 0, 0),
-			Vector3.new(0, 1.35, 0), Vector3.new(0, -1.35, 0),
-			Vector3.new(0, 0, 1.35), Vector3.new(0, 0, -1.35)
-		} do
-			local probe = worldPos + off
-			local ray = probe - eye
-			local hit = workspace:Raycast(eye, ray, losFilter)
-			if not hit then return true end
-			if (hit.Position - eye).Magnitude >= ray.Magnitude - 1.5 then return true end
-			if hit.Instance and (hit.Instance.Position - worldPos).Magnitude < 2.5 then return true end
-		end
-		return false
-	end
 
 	local function cachedIsBreakable(v)
 		local now = tick()
@@ -12549,10 +12512,6 @@ run(function()
 		if LimitItem.Enabled and not (store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name].breakBlock) then 
 			return false 
 		end
-
-		if not isVisible(v.Position) then
-			return false
-		end
 		
 		return true
 	end
@@ -12770,7 +12729,6 @@ run(function()
 				end
 				
 				task.spawn(hookFreezeController)
-				refreshFilter()
 				local beds = collection('bed', Breaker)
 				local luckyblock = collection('LuckyBlock', Breaker)
 				local ironores = collection('iron_ore_mesh_block', Breaker)
@@ -12817,7 +12775,6 @@ run(function()
 					task.wait(1 / math.clamp(UpdateRate.Value, 1, 60))
 					if not Breaker.Enabled then break end
 					if entitylib.isAlive then
-						refreshFilter()
 						local localPosition = entitylib.character.RootPart.Position
 
 						if Bed.Enabled and YetiBreaker and YetiBreaker.Enabled then
