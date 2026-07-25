@@ -30037,197 +30037,232 @@ run(function()
 end)
 
 run(function()
-    local BedAssist
-    local AimMode
-    local Speed
-    local Range
-    local Shake
-    local Angle
-    local Sort
-    local Mode
-    local Limit
-    
-    local function ease(t)
-        return t < 0.5 and 4 * t * t * t or 1 - math.pow(-2 * t + 2, 3) / 2
-    end
-    
-    local started = 0
-    local aimfuncs = {
-        Simple = function(localcframe, pos, fps)
-            local rng = Random.new()
-            return localcframe:Lerp(
-                CFrame.lookAt(
-                    localcframe.p,
-                    pos
-                        + Vector3.new(
-                            (rng:NextNumber() - 0.5) * Shake.Value * fps,
-                            (rng:NextNumber() - 0.5) * Shake.Value * fps,
-                            (rng:NextNumber() - 0.5) * Shake.Value * fps
-                        )
-                ),
-                Speed.Value * fps
-            ),
-                Speed.Value
-        end,
-        Adaptive = function(localcframe, pos, fps)
-            local prog, rng = ease(math.min((tick() - started) / (1 / (Speed.Value * 0.5)), 1)), Random.new()
-            local speed = Speed.Value * prog
-            return localcframe:Lerp(CFrame.lookAt(localcframe.p, pos + Vector3.new((rng:NextNumber() - 0.5) * Shake.Value * fps, (rng:NextNumber() - 0.5) * Shake.Value * fps, (rng:NextNumber() - 0.5) * Shake.Value * fps)), speed * fps), speed
-        end
-    }
-    
-    local function getMousePosition()
-        local suc, mouseinfo = pcall(function()
-            return bedwars.BlockBreaker.clientManager:getBlockSelector():getMouseInfo(0)
+    local BedAssist = {Enabled = false}
+    local bedassistrange = {Value = 30}
+    local bedassistsmoothness = {Value = 6}
+    local bedassistangle = {Value = 70}
+    local bedassistfirstperson = {Enabled = false}
+    local bedassistshopcheck = {Enabled = false}
+	local bedassisthandcheck = {Enabled = false}
+	local bedassistlowestblock = {Enabled = false}
+	local function getBedAimSpeed(speedVal, dt)
+		local baseSpeed = 0.01
+		local multiplier = 1.35
+		local speed = baseSpeed * (multiplier ^ speedVal)
+		return math.min(speed, 0.95) * (dt * 60)
+	end
+
+	local function checkHand()
+		return isHoldingPickaxe() or isHoldingItem({'axe'})
+	end
+
+    local function getBedPlacerTier(bed)
+        if not bed then return 0 end
+        local userId = bed:GetAttribute('PlacedByUserId')
+        if not userId then return 0 end
+
+        local success, player = pcall(function()
+            return playersService:GetPlayerByUserId(userId)
         end)
-    
-        if suc and mouseinfo then
-            if mouseinfo.target and mouseinfo.target.blockRef then
-                return mouseinfo.target.blockRef.blockPosition * 3
-            end
-            if mouseinfo.placementPosition then
-                return mouseinfo.placementPosition * 3
-            end
+
+        if success and player then
+            return getAccountTier(player)
         end
-        return nil
+        return 0
     end
-    
-    local function getBestPosition(block)
-        local handler = bedwars.BlockController:getHandlerRegistry():getHandler(block.Name)
-        local cost, pos = math.huge, nil
-        local mag = 9e9
-    
-        local positions = (handler and handler:getContainedPositions(block) or { block.Position / 3 })
-    
-        for _, v in positions do
-            local dpos, dcost = calculatePath(block, v * 3, breakmethods[Sort.Value], Angle.Value, getMousePosition())
-            local dmag = dpos and (entitylib.character.RootPart.Position - dpos).Magnitude
-    
-            if dpos then
-                if dcost < cost or (dcost == cost and dmag < mag) then
-                    cost, pos, mag = dcost, dpos, dmag
-                end
+
+    local function shouldAimAtBed(bed)
+        if not bed then return false end
+        local tier = getBedPlacerTier(bed)
+        local myTier = getAccountTier(lplr)
+
+        if tier == 99 and myTier <= 4 then
+            return false 
+        end
+
+        if tier == 4 and myTier == 0 then
+            if tick() % 2.3 > 1.1 then
+                return false
             end
         end
-    
-        if pos and (entitylib.character.RootPart.Position - pos).Magnitude <= Range.Value then
-            return pos
-        end
-        return nil
+
+        return true
     end
-    
-    BedAssist = vape.Categories.World:CreateModule({
-        Name = 'Bed Assist',
-        Function = function(call)
-            if call then
-                repeat
-                    task.wait()
-                until store.matchState ~= 0 or not BedAssist.Enabled
-                if not BedAssist.Enabled then
-                    return
-                end
-    
-                local beds = collection('bed', BedAssist, function(tab, obj)
-                    task.delay(0, function()
-                        if not obj:GetAttribute('Team' .. (lplr:GetAttribute('Team') or -1) .. 'NoBreak') then
-                            table.insert(tab, obj)
-                        end
-                    end)
-                end)
-                local rng = Random.new()
-                local lastbed = nil
-    
-                BedAssist:Clean(runService.PostSimulation:Connect(function(dt)
-                    if entitylib.isAlive and (not Limit.Enabled or store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name].breakBlock) then
-                        local localPosition = entitylib.character.RootPart.Position
-                        for _, v in beds do
-                            if (localPosition - v.Position).Magnitude <= Range.Value then
-                                if lastbed ~= v then
-                                    started = tick()
-                                end
-                                lastbed = v
-    
-                                local pos = getBestPosition(v)
-                                if pos then
-                                    local pred, speed = aimfuncs[AimMode.Value](gameCamera.CFrame, pos, dt)
-    
-                                    if Mode.Value == 'Mouse' then
-                                        pos += Vector3.new(
-                                            (rng:NextNumber() - 0.5) * Shake.Value * 0.1,
-                                            (rng:NextNumber() - 0.5) * Shake.Value * 0.1,
-                                            (rng:NextNumber() - 0.5) * Shake.Value * 0.1
-                                        )
-                                        local campos, vis = gameCamera:WorldToViewportPoint(pos)
-    
-                                        if vis then
-                                            local vec2 = (
-                                                Vector2.new(campos.X, campos.Y) - inputService:GetMouseLocation()
-                                            ) * (speed * dt)
-                                            mousemoverel(vec2.X, vec2.Y)
-                                        end
-                                    else
-                                        gameCamera.CFrame = pred
-                                    end
-                                end
-                                break
-                            end
-                        end
+
+    local camera = gameCamera
+
+    local beds = {}
+    local Connections = {}
+
+    local function isFirstPerson()
+        if not (lplr.Character and lplr.Character:FindFirstChild("Head")) then return false end
+        return (lplr.Character.Head.Position - camera.CFrame.Position).Magnitude < 2
+    end
+
+    local function getClosestEnemyBed(playerPos)
+        local closestBed = nil
+        local closestDistance = bedassistrange.Value
+        local lowestY = math.huge
+
+        for _, bed in pairs(beds) do
+            if not bed.Parent then continue end
+
+            if tostring(bed:GetAttribute("TeamId")) == tostring(lplr:GetAttribute("Team")) then
+                continue
+            end
+
+            if bed:GetAttribute("BedShieldEndTime") and bed:GetAttribute("BedShieldEndTime") > workspace:GetServerTimeNow() then
+                continue
+            end
+
+            if not shouldAimAtBed(bed) then
+                continue
+            end
+
+            local distance = (playerPos - bed.Position).Magnitude
+            if distance > bedassistrange.Value then continue end
+
+            local delta = (bed.Position - playerPos)
+            local localfacing = (lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart") and lplr.Character.HumanoidRootPart.CFrame.LookVector * Vector3.new(1, 0, 1)) or Vector3.new(1, 0, 0)
+            local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
+
+            if angle <= math.rad(bedassistangle.Value) / 2 then
+                if bedassistlowestblock.Enabled then
+                    if bed.Position.Y < lowestY then
+                        lowestY = bed.Position.Y
+                        closestBed = bed
                     end
-                end))
+                else
+                    if distance < closestDistance then
+                        closestDistance = distance
+                        closestBed = bed
+                    end
+                end
+            end
+        end
+
+        return closestBed
+    end
+
+
+    BedAssist = vape.Categories.Utility:CreateModule({
+        Name = "BedAssist",
+        Function = function(callback)
+            if callback then
+                beds = collectionService:GetTagged("bed")
+                local connection
+                connection = runService.Heartbeat:Connect(function(dt)
+                    if not BedAssist.Enabled then
+                        connection:Disconnect()
+                        camera.CameraType = Enum.CameraType.Custom
+                        return
+                    end
+                    if not entitylib.isAlive then
+                        return
+                    end
+					if bedassisthandcheck.Enabled and not checkHand() then 
+						return
+					end
+                    if bedassistfirstperson.Enabled and not isFirstPerson() then
+                        return
+                    end
+                    if bedassistshopcheck.Enabled then
+                        local isShop = lplr:FindFirstChild("PlayerGui") and lplr.PlayerGui:FindFirstChild("ItemShop")
+                        if isShop then return end
+                    end
+
+                    local playerPos = entitylib.LocalPosition or entitylib.character.HumanoidRootPart.Position
+                    local closestBed = getClosestEnemyBed(playerPos)
+
+                    if closestBed then
+                        local bedPos = closestBed.Position
+                        local currentCFrame = camera.CFrame
+                        local targetCFrame = CFrame.lookAt(currentCFrame.Position, bedPos)
+                        local lerpAmount = bedassistsmoothness.Value / 15
+                        camera.CFrame = currentCFrame:Lerp(targetCFrame, math.min(getBedAimSpeed(bedassistsmoothness.Value, dt), 0.95))
+                    end
+                end)
+                table.insert(Connections, connection)
+            else
+                for _, v in pairs(Connections) do
+                    pcall(function()
+                        v:Disconnect()
+                    end)
+                end
+                Connections = {}
+                table.clear(beds)
+                camera.CameraType = Enum.CameraType.Custom
             end
         end,
-        Tooltip = 'Smoothly aims towards a bed close to your mouse'
+        Tooltip = "Smoothly aims your camera at the closest enemy bed within range."
     })
-    
-    local list = {'Camera'}
-    if inputService.MouseEnabled and mousemoverel then
-        table.insert(list, 'Mouse')
-    end
-    AimMode = BedAssist:CreateDropdown({
-        Name = 'Mode',
-        List = {'Simple', 'Adaptive'},
-        Default = 'Simple',
+
+    bedassistrange = BedAssist:CreateSlider({
+        Name = "Assist Range",
+        Min = 10,
+        Max = 100,
+        Function = function(val) end,
+        Default = 30,
+        Suffix = function(val) 
+            return val == 1 and "stud" or "studs" 
+        end
     })
-    Mode = BedAssist:CreateDropdown({
-        Name = 'Aim Mode',
-        List = list,
-        Default = 'Camera',
-    })
-    Sort = BedAssist:CreateDropdown({
-        Name = 'Target Mode',
-        List = {'Distance', 'Health'},
-        Default = 'Distance',
-    })
-    Speed = BedAssist:CreateSlider({
-        Name = 'Aim Speed',
+
+    bedassistsmoothness = BedAssist:CreateSlider({
+        Name = "Aim Speed",
         Min = 1,
         Max = 20,
-        Default = 7,
+        Function = function(val) end,
+        Default = 6
     })
-    Range = BedAssist:CreateSlider({
-        Name = 'Assist Range',
-        Min = 1,
-        Max = 30,
-        Default = 20,
-        Suffix = function(val)
-            return val <= 1 and 'stud' or 'studs'
-        end,
-    })
-    Shake = BedAssist:CreateSlider({
-        Name = 'Shake',
-        Min = 1,
-        Max = 100,
-        Default = 3,
-    })
-    Angle = BedAssist:CreateSlider({
-        Name = 'Max angle',
-        Min = 1,
-        Max = 360,
-        Default = 200,
-    })
-    Limit = BedAssist:CreateToggle({Name = 'Limit to item', Default = true})
-end)
 
+    bedassistangle = BedAssist:CreateSlider({
+        Name = "Max Angle",
+        Min = 10,
+        Max = 360,
+        Function = function(val) end,
+        Default = 70
+    })
+
+    bedassistfirstperson = BedAssist:CreateToggle({
+        Name = "First Person Only",
+        Function = function() end,
+        Default = false,
+        Tooltip = "Only activates in first-person mode."
+    })
+
+    bedassistshopcheck = BedAssist:CreateToggle({
+        Name = "Shop Check",
+        Function = function() end,
+        Default = false,
+        Tooltip = "Disables aiming when in the shop menu."
+    })
+
+	bedassisthandcheck = BedAssist:CreateToggle({
+		Name = "Hand Check",
+		Function = function() end,
+		Default = true,
+		Tooltip = "Checks if you are holding a pickaxe"
+	})
+
+	bedassistlowestblock = BedAssist:CreateToggle({
+		Name = "Target Lowest Block",
+		Function = function() end,
+		Default = false,
+		Tooltip = "Targets the enemy bed at the lowest Y position instead of the closest"
+	})
+
+    table.insert(Connections, collectionService:GetInstanceAddedSignal("bed"):Connect(function(bed)
+        table.insert(beds, bed)
+    end))
+
+    table.insert(Connections, collectionService:GetInstanceRemovedSignal("bed"):Connect(function(bed)
+        local i = table.find(beds, bed)
+        if i then
+            table.remove(beds, i)
+        end
+    end))
+end)
 
 run(function()
 	local DamageIndicator
