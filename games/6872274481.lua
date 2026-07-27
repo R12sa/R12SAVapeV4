@@ -44562,7 +44562,7 @@ run(function()
     local AntiLasso
     local Chance
     local Check
-    
+
     local function Added(ent)
         AntiLasso:Clean(ent.ChildAdded:Connect(function(v)
             if v:IsA('Accessory') and v:FindFirstChild('Rope') and Random.new(os.clock()):NextNumber(1, 100) < Chance.Value and (not Check.Enabled or entitylib.EntityPosition({
@@ -44577,7 +44577,7 @@ run(function()
             end
         end))
     end
-    
+
     AntiLasso = vape.Categories.Utility:CreateModule({
         Name = 'Anti Lasso',
         Function = function(callback)
@@ -44594,7 +44594,7 @@ run(function()
         end,
         Tooltip = 'Prevents you from getting pulled by lasso projectile.'
     })
-    
+
     Chance = AntiLasso:CreateSlider({
         Name = 'Chance',
         Min = 0,
@@ -46039,6 +46039,681 @@ run(function()
         Default = 100,
         Suffix = 'ms',
         Tooltip = 'Delay in milliseconds before AutoPatch places a replacement block; 0 for instant'
+    })
+end)
+
+
+run(function()
+    local AutoWren
+    local Rate
+
+    local captured = nil
+    local spamConns = {}
+
+    local function autoLearn()
+        local learnLog = {}
+        local learning = true
+        local old
+
+        local ok = pcall(function()
+            local mt = getrawmetatable(game)
+            old = mt.__namecall
+            setreadonly(mt, false)
+            mt.__namecall = newcclosure(function(self, ...)
+                local method = getnamecallmethod()
+                if learning and (method == 'FireServer' or method == 'InvokeServer') then
+                    if not (checkcaller and checkcaller()) then
+                        local entry = learnLog[self]
+                        if entry then
+                            entry.count += 1
+                        else
+                            learnLog[self] = {count = 1, method = method, args = {...}}
+                        end
+                    end
+                end
+                return old(self, ...)
+            end)
+            setreadonly(mt, true)
+        end)
+
+        if not ok then
+            notif('Auto Wren', 'Hook failed — executor lacks support', 5, 'alert')
+            return false
+        end
+
+        pcall(function() bedwars.AbilityController:useAbility('open_black_market') end)
+        task.wait(0.3)
+
+        learning = false
+        pcall(function()
+            local mt = getrawmetatable(game)
+            setreadonly(mt, false)
+            mt.__namecall = old
+            setreadonly(mt, true)
+        end)
+
+        local best, bestCount
+        for remote, e in pairs(learnLog) do
+            if remote and remote.Parent then
+                if not bestCount or e.count < bestCount then
+                    best, bestCount = remote, e.count
+                end
+            end
+        end
+
+        if best then
+            local e = learnLog[best]
+            captured = {remote = best, method = e.method, args = e.args}
+            notif('Auto Wren', 'Learned: ' .. best.Name, 3, 'info')
+            return true
+        end
+        notif('Auto Wren', 'Nothing captured — wrong kit?', 5, 'alert')
+        return false
+    end
+
+    local function fireCaptured()
+        if not captured then return end
+        local r, m, a = captured.remote, captured.method, captured.args
+        if not (r and r.Parent) then return end
+        if m == 'InvokeServer' then
+            task.spawn(function() pcall(r.InvokeServer, r, unpack(a)) end)
+        else
+            pcall(r.FireServer, r, unpack(a))
+        end
+    end
+
+    local function startSpam()
+        local function pass()
+            if not AutoWren.Enabled then return end
+            for _ = 1, Rate.Value do fireCaptured() end
+        end
+        AutoWren:Clean(runService.Heartbeat:Connect(pass))
+        pcall(function() AutoWren:Clean(runService.RenderStepped:Connect(pass)) end)
+        pcall(function() AutoWren:Clean(runService.Stepped:Connect(pass)) end)
+    end
+
+    AutoWren = vape.Categories.Kits:CreateModule({
+        Name = 'Auto Wren',
+        Function = function(callback)
+            if callback then
+                task.spawn(function()
+                    repeat task.wait() until store.equippedKit ~= '' and store.matchState ~= 0 or not AutoWren.Enabled
+                    if not AutoWren.Enabled then return end
+                    if not captured then
+                        if not autoLearn() then return end
+                    end
+                    startSpam()
+                end)
+            end
+        end,
+        Tooltip = 'Auto-learns Wren remote on enable, spams on Heartbeat + RenderStepped + Stepped. No button press needed.'
+    })
+
+    Rate = AutoWren:CreateSlider({
+        Name = 'Rate',
+        Min = 1,
+        Max = 1000,
+        Default = 1000,
+        Suffix = '/frame',
+        Tooltip = 'Fires per pass. Runs on Heartbeat + RenderStepped + Stepped (3 events per frame).'
+    })
+
+    AutoWren:CreateButton({
+        Name = 'Re-Learn',
+        Tooltip = 'Re-captures the remote if it broke.',
+        Function = function()
+            task.spawn(autoLearn)
+        end
+    })
+end)
+
+run(function()
+    local KingAuto
+    local BrightnessSlider
+    -- Block overhaul
+    local saved = {}
+    local stash = Instance.new('Folder')
+    stash.Name = 'KingAutoStash'
+    stash.Parent = vape.gui
+    -- Lighting / sky
+    local lightStash = Instance.new('Folder')
+    lightStash.Name = 'KingAutoLightStash'
+    lightStash.Parent = vape.gui
+    local addedLighting = {}
+    local origLighting = {}
+    local origCloudEnabled = nil
+    local hasFF = false
+    local savedLightProps = {'Ambient','OutdoorAmbient','Brightness','ExposureCompensation','FogColor','FogEnd','FogStart','GlobalShadows'}
+
+    local C = Color3.fromRGB
+    local blockColors = {
+        -- Wool
+        wool_white = C(184,184,184), wool_red    = C(140, 47, 47),
+        wool_blue  = C( 47, 79,140), wool_green  = C( 47,107, 58),
+        wool_yellow = C(140,122, 47), wool_cyan  = C( 47,140,140),
+        wool_pink  = C(140, 58,107), wool_orange = C(140, 74, 47),
+        wool_purple = C( 90, 47,140), wool_brown = C(107, 74, 47),
+        wool_builder = C(184,184,184),
+        -- Stone / rock
+        stone        = C( 74, 74, 74), stone_brick  = C( 63, 63, 63),
+        cobblestone  = C( 58, 58, 58), stone_slab   = C( 63, 63, 63),
+        stone_tiles  = C( 58, 58, 58), stone_pillar = C( 74, 74, 74),
+        stone_player_block = C( 74, 74, 74), stone_brick_builder = C( 63, 63, 63),
+        granite          = C( 90, 74, 69), granite_polished  = C(106, 90, 85),
+        diorite          = C(106,106,106), diorite_polished  = C(122,122,122),
+        andesite         = C( 80, 80, 80), andesite_polished = C( 90, 90, 90),
+        marble       = C(106,106,106), marble_pillar = C(106,106,106),
+        limestone    = C(138,126,106),
+        slate_brick  = C( 47, 47, 47), slate_tiles  = C( 47, 47, 47),
+        galactite    = C( 47, 42, 74), galactite_brick = C( 47, 42, 74),
+        kobblak      = C( 58, 58, 74), void_grass   = C( 42, 42, 42),
+        altar_block_one = C( 74, 74, 74), altar_block_two   = C( 74, 74, 74),
+        altar_block_three = C( 74, 74, 74), broken_altar_block = C( 74, 74, 74),
+        -- Wood
+        oak_log          = C(107, 74, 47), spruce_log      = C( 74, 53, 38),
+        birch_log        = C(122,106, 74), hickory_log     = C( 74, 53, 38),
+        wood_plank_oak   = C(107, 74, 47), wood_plank_oak_builder = C(107, 74, 47),
+        wood_plank_birch = C(122,106, 74), wood_plank_spruce = C( 74, 53, 38),
+        wood_plank_maple = C(107, 74, 47), bookshelf       = C( 90, 58, 42),
+        -- Earth / terrain
+        dirt         = C( 75, 58, 42), grass         = C( 47, 90, 47),
+        sand         = C(122,111, 74), red_sand      = C(122, 74, 58),
+        sandstone    = C(111,102, 80), sandstone_smooth    = C(122,114, 90),
+        sandstone_polished = C(111,102, 80),
+        red_sandstone = C(111, 74, 63), red_sandstone_smooth = C(122, 90, 79),
+        red_sandstone_polished = C(111, 74, 63),
+        moss_block   = C( 47, 95, 58), clay          = C(107, 90, 90),
+        haybale      = C(140,122, 47),
+        -- Clay variants
+        clay_black  = C( 42, 42, 42), clay_white  = C(184,184,184),
+        clay_red    = C(140, 47, 47), clay_blue   = C( 47, 79,140),
+        clay_green  = C( 47,107, 58), clay_yellow = C(140,122, 47),
+        clay_cyan   = C( 47,140,140), clay_pink   = C(140, 58,107),
+        clay_orange = C(140, 74, 47), clay_purple = C( 90, 47,140),
+        clay_dark_brown = C( 74, 53, 38), clay_dark_green = C( 47, 90, 47),
+        clay_light_brown = C(107, 74, 47), clay_light_green = C( 47,140, 90),
+        clay_gray   = C( 80, 80, 80), clay_tan    = C(122,111, 74),
+        -- Glass / ice / misc terrain
+        brick        = C(106, 47, 47),
+        glass        = C(154,167,176), magic_glass   = C(154,167,176),
+        ice          = C( 79,111,140), snow          = C(176,184,192),
+        snow_pile    = C(176,184,192),
+        glowstone    = C(140,122, 47), magma_block   = C(140, 58, 31),
+        concrete_green = C( 47,107, 58), blue_tile   = C( 47, 79,140),
+        -- Defense
+        obsidian     = C( 26, 15, 46), bedrock       = C( 42, 42, 42),
+        ceramic      = C( 90, 90,106), barrier       = C( 15, 15, 15),
+        -- Metal / ore blocks
+        iron_block   = C(138,138,138), iron_ore         = C(138,138,138),
+        iron_ore_mesh_block = C(138,138,138),
+        gold_block   = C(140,122, 47), diamond_block    = C( 47,111,140),
+        emerald_block = C( 47,140, 90), copper_block    = C(140, 90, 58),
+        steel_block  = C( 74, 79, 90), guilded_iron     = C(122,106, 74),
+        diamond_ore  = C( 47,111,140), emerald_ore      = C( 47,140, 90),
+        diamond_capture_block = C( 47,111,140),
+        -- Beds / team
+        bed          = C(140, 47, 58), og_bed        = C(140, 47, 58),
+        royale_bed   = C(140, 47, 58), fake_bed      = C( 90, 31, 37),
+        team_door    = C( 58, 58, 58),
+        -- Utility
+        enchant_table         = C( 47, 42, 74),
+        enchant_table_glitched = C( 47, 42, 74),
+        broken_enchant_table  = C( 47, 42, 74),
+        forge        = C( 74, 58, 47), chest         = C( 90, 63, 42),
+        personal_chest = C( 74, 51, 37), og_personal_chest = C( 74, 51, 37),
+        brewing_cauldron = C( 47, 74, 74), barrel    = C(107, 74, 47),
+        drawbridge   = C( 58, 74, 90), christmas_drawbridge = C( 58, 74, 90),
+        scaffold     = C( 90, 74, 53), christmas_scaffold   = C( 90, 74, 53),
+        zipline_base = C( 47, 90, 90), jump_pad      = C( 74, 90, 47),
+        gumdrop_bounce_pad = C( 74, 90, 47),
+        camera_turret = C( 58, 58, 74), lasso_hook   = C( 90, 74, 53),
+        ladder       = C(107, 74, 47), vine_ladder   = C( 47,106, 58),
+        survival_crate = C( 90, 63, 42), team_crate  = C( 90, 63, 42),
+        juggernaut_crate = C(138,138,138),
+        solar_panel  = C( 74, 79, 90), satellite_dish = C(138,138,138),
+        healing_fountain = C( 47,140, 90), healing_turret = C( 47,140, 90),
+        -- Combat / traps
+        tnt          = C(140, 58, 47), siege_tnt     = C(106, 42, 31),
+        snap_trap    = C( 74, 31, 47), invisible_landmine = C( 10, 10, 10),
+        tesla_trap   = C( 47, 47,106), void_turret   = C( 26, 10, 42),
+        spike_trap   = C( 58, 26, 26), grave_trap    = C( 58, 26, 26),
+        grave_trap_block = C( 58, 26, 26),
+        volatile_stone   = C(140, 58, 47),
+        exploding_tank_block = C(140, 58, 47),
+        lightning_coil   = C( 47, 47,106),
+        -- Cannons / machines
+        cannon       = C( 74, 74, 90), auto_cannon    = C( 74, 74, 90),
+        manual_cannon = C( 74, 74, 90), ballista      = C( 74, 74, 90),
+        classic_auto_turret = C( 74, 74, 90), spread_cannon = C( 74, 74, 90),
+        classic_shock_wave_turret = C( 74, 74, 90), squad_launcher = C( 74, 74, 90),
+        party_cannon = C( 90, 42, 42), firework_crate = C( 90, 42, 42),
+        vending_machine = C( 58, 58, 74), snow_cone_machine = C( 74,106,122),
+        broken_snow_cone_machine = C( 74,106,122),
+        target_dummy_block_tier_1 = C(138,138,138),
+        target_dummy_block_tier_2 = C( 47,111,140),
+        target_dummy_block_tier_3 = C( 47,140, 90),
+        target_dummy_block_tier_4 = C(122,106, 74),
+        -- Lucky blocks
+        lucky_block  = C(140,122, 47), cosmic_lucky_block   = C( 90, 47,140),
+        flying_lucky_block = C( 47,111,140), food_lucky_block = C(140, 90, 47),
+        huge_lucky_block = C(122,106, 47), lucky_block_trap  = C(106, 31, 47),
+        forge_lucky_block = C( 74, 58, 47),
+        lucky_block_item_smelter = C( 74, 58, 47),
+        halloween_lucky_block = C(106, 31, 47),
+        growing_halloween_lucky_block = C(106, 31, 47),
+        purple_lucky_block = C( 90, 47,140),
+        rainbow_lucky_block = C(140,122, 47),
+        new_years_lucky_block = C( 47,140,106),
+        new_years_lucky_block_2024 = C( 47,140,106),
+        magical_hero_lucky_block = C( 90, 47,140),
+        glitched_lucky_block = C( 15, 15, 15),
+        -- Special / Kit
+        beehive      = C(140,122, 47), chicken_egg_block = C(176,160,122),
+        egg_block    = C(176,160,122), fisherman_coral   = C( 47,140,122),
+        pinata       = C(140, 58,107), smoke_block       = C( 58, 58, 58),
+        damage_banner = C(140, 47, 47), heal_banner      = C( 47,140, 58),
+        defense_banner = C( 47, 74,140),
+        aquamarine_lantern = C( 47,140,140), lantern_block = C(140,122, 47),
+        nest         = C( 74, 58, 47), nest_deposit_block = C( 74, 58, 47),
+        pirate_gunpowder_barrel = C(140, 58, 47),
+        sacrophagus  = C(111,102, 80), desert_pot        = C(122,111, 74),
+        scarab_portal = C(122,111, 74),
+        cake_one     = C(176,160,122), cake_three    = C(176,160,122),
+        -- Nature / decoration
+        large_bush   = C( 47,106, 58), small_bush    = C( 47,106, 58),
+        flower_purple = C(106, 58,106), pumpkin      = C(140, 74, 47),
+        pumpkin_block = C(140, 74, 47), melon        = C( 47,106, 58),
+        carrot       = C(140, 74, 47),
+        crystalheart_flower = C( 47,140,122),
+        soulvine_flower = C( 90, 47,140), tearbloom_flower = C( 47,140,122),
+        radioactive_plant = C( 47,140, 90),
+        slime_block  = C( 47,106, 58), spider_web    = C( 90, 90, 90),
+        spider_queen_web = C( 90, 90, 90),
+        -- Void / dark
+        void_block   = C( 10, 10, 10), void_bait     = C( 10, 10, 10),
+        invisible_block = C( 10, 10, 10),
+        void_portal  = C(  5,  5,  5), void_teleport_portal = C( 26, 26, 42),
+        teleport_block = C( 26, 26, 42),
+        styx_entrance_portal = C( 26, 10, 42), styx_exit_portal = C( 26, 10, 42),
+        void_dirt    = C( 42, 26, 10), void_growth   = C( 26, 10, 42),
+        -- Misc / special
+        gum_block    = C(106, 90,122), dragon_egg    = C( 47, 47, 74),
+        fire_sheep_statue = C( 74, 31, 31),
+        excalibur    = C(138,138,138),
+        spawn_gadget = C(138,138,138),
+        global_generator_gadget = C(140,122, 47),
+        team_generator_gadget   = C(140,122, 47),
+        merchant_region_block   = C(140,122, 47),
+        black_market_shop       = C( 42, 42, 42),
+        defense_scanner_block_snapping = C( 47, 74,140),
+        jellyfish_block_snapping = C( 47,140,140),
+        pirate_flag  = C( 42, 42, 42),
+    }
+
+    local function applyPart(part, colorOverride)
+        if saved[part] or part.Material == Enum.Material.Neon or part.Material == Enum.Material.ForceField then return end
+        if part.Name ~= 'Handle' then
+            for _, child in part:GetChildren() do
+                if child:IsA('SurfaceAppearance') or child:IsA('Decal') or child:IsA('Texture') then
+                    pcall(function() child:Destroy() end)
+                end
+            end
+        end
+        local origMat   = part.Material
+        local origColor = part.Color
+        pcall(function() part.Material = Enum.Material.SmoothPlastic end)
+        if colorOverride then pcall(function() part.Color = colorOverride end) end
+        saved[part] = { Material = origMat, Color = origColor }
+    end
+
+    local function restorePart(part)
+        local entry = saved[part]
+        if not entry then return end
+        pcall(function() part.Material = entry.Material end)
+        pcall(function() part.Color    = entry.Color end)
+        saved[part] = nil
+    end
+
+    local function scanBlock(model, col)
+        if model:IsA('BasePart') then pcall(applyPart, model, col) end
+        for _, v in model:GetDescendants() do
+            if v:IsA('BasePart') then pcall(applyPart, v, col) end
+        end
+    end
+
+    KingAuto = vape.Categories.Render:CreateModule({
+        Name = 'King Auto',
+        Tooltip = 'Flat blocks + grey sky + full bright + no clouds',
+        Function = function(callback)
+            if callback then
+                repeat task.wait() until store.map or not KingAuto.Enabled
+                if not KingAuto.Enabled then return end
+
+                -- FFlags: if executor supports them, kill textures at engine level (no RenderStepped needed)
+                hasFF = type(setfflag) == 'function' and pcall(setfflag, 'RenderShadowIntensity', '0')
+                if hasFF then
+                    pcall(setfflag, 'PartTexturePackTable2022', '{}')
+                    pcall(setfflag, 'PartTexturePackTablePre2022', '{}')
+                    pcall(setfflag, 'TextureCompositorActiveJobs', '0')
+                    pcall(setfflag, 'FRMQualityLevelOverride', '1')
+                    pcall(setfflag, 'GrassMaxDistance', '0')
+                    pcall(setfflag, 'CSGLevelOfDetailSwitchingDistance', '0')
+                    pcall(setfflag, 'CSGLevelOfDetailSwitchingDistanceL12', '0')
+                    pcall(setfflag, 'CSGLevelOfDetailSwitchingDistanceL23', '0')
+                    pcall(setfflag, 'CSGLevelOfDetailSwitchingDistanceL34', '0')
+                    pcall(setfflag, 'DebugPauseVoxelizer', 'True')
+                    pcall(setfflag, 'RenderLocalLightUpdatesMax', '0')
+                    pcall(setfflag, 'RenderLocalLightUpdatesMin', '0')
+                end
+
+                -- === Block overhaul ===
+                local blocks = store.map:FindFirstChild('Blocks')
+                if blocks then
+                    for _, blockModel in blocks:GetChildren() do
+                        pcall(scanBlock, blockModel, blockColors[blockModel.Name])
+                    end
+                end
+                for _, v in store.map:GetDescendants() do
+                    if v:IsA('BasePart') then pcall(applyPart, v, nil) end
+                end
+                local function flattenPart(part, col)
+                    part.LocalTransparencyModifier = 1
+                    pcall(applyPart, part, col)
+                    task.defer(function()
+                        if part.Parent then part.LocalTransparencyModifier = 0 end
+                    end)
+                end
+                KingAuto:Clean(store.map.Blocks.ChildAdded:Connect(function(v)
+                    if not KingAuto.Enabled then return end
+                    local col = blockColors[v.Name]
+                    for _, p in v:GetDescendants() do
+                        if p:IsA('BasePart') then p.LocalTransparencyModifier = 1 end
+                    end
+                    pcall(scanBlock, v, col)
+                    task.defer(function()
+                        for _, p in v:GetDescendants() do
+                            if p:IsA('BasePart') and p.Parent then
+                                p.LocalTransparencyModifier = 0
+                            end
+                        end
+                    end)
+                    KingAuto:Clean(v.DescendantAdded:Connect(function(d)
+                        if not KingAuto.Enabled then return end
+                        if d:IsA('BasePart') then
+                            flattenPart(d, col)
+                        elseif d:IsA('SurfaceAppearance') or d:IsA('Decal') or d:IsA('Texture') then
+                            pcall(function() d:Destroy() end)
+                        end
+                    end))
+                end))
+                local function getToolBlockColor(inst, char)
+                    local p = inst.Parent
+                    while p and p ~= char do
+                        if blockColors[p.Name] then return blockColors[p.Name] end
+                        p = p.Parent
+                    end
+                    return blockColors[inst.Name]
+                end
+                local function watchChar(char)
+                    for _, v in char:GetDescendants() do
+                        if v:IsA('BasePart') then
+                            local col = getToolBlockColor(v, char)
+                            if col then pcall(applyPart, v, col) end
+                        end
+                    end
+                    KingAuto:Clean(char.DescendantAdded:Connect(function(v)
+                        if not KingAuto.Enabled then return end
+                        if v:IsA('BasePart') then
+                            local col = getToolBlockColor(v, char)
+                            if col then flattenPart(v, col) end
+                        elseif v:IsA('SurfaceAppearance') or v:IsA('Decal') or v:IsA('Texture') then
+                            pcall(function() v:Destroy() end)
+                        end
+                    end))
+                end
+                if lplr.Character then watchChar(lplr.Character) end
+                KingAuto:Clean(lplr.CharacterAdded:Connect(function(newChar)
+                    if KingAuto.Enabled then watchChar(newChar) end
+                end))
+
+                -- First-person ViewModel lives under Camera, not the character
+                local cam = workspace.CurrentCamera
+                local function flattenCamDescendant(v)
+                    if v:IsA('SurfaceAppearance') or v:IsA('Decal') or v:IsA('Texture') then
+                        pcall(function() v:Destroy() end)
+                    elseif v:IsA('BasePart') then
+                        local col = getToolBlockColor(v, cam)
+                        if col then flattenPart(v, col) end
+                    end
+                end
+                for _, v in cam:GetDescendants() do flattenCamDescendant(v) end
+                KingAuto:Clean(cam.DescendantAdded:Connect(function(v)
+                    if KingAuto.Enabled then flattenCamDescendant(v) end
+                end))
+                local function hasBlockAncestor(inst)
+                    local p = inst.Parent
+                    while p and p ~= workspace do
+                        if blockColors[p.Name] then return blockColors[p.Name] end
+                        p = p.Parent
+                    end
+                end
+                KingAuto:Clean(workspace.DescendantAdded:Connect(function(v)
+                    if not KingAuto.Enabled then return end
+                    if v:IsA('SurfaceAppearance') or v:IsA('Decal') or v:IsA('Texture') then
+                        if hasBlockAncestor(v) then pcall(function() v:Destroy() end) end
+                    elseif v:IsA('Model') and blockColors[v.Name] then
+                        pcall(scanBlock, v, blockColors[v.Name])
+                    elseif v:IsA('BasePart') and not saved[v] then
+                        local col = hasBlockAncestor(v) or blockColors[v.Name]
+                        if col then flattenPart(v, col) end
+                    end
+                end))
+                if not hasFF then
+                    KingAuto:Clean(game:GetService('RunService').RenderStepped:Connect(function()
+                        if not KingAuto.Enabled then return end
+                        local blks = store.map:FindFirstChild('Blocks')
+                        if not blks then return end
+                        for _, v in blks:GetDescendants() do
+                            if v:IsA('SurfaceAppearance') or v:IsA('Decal') or v:IsA('Texture') then
+                                pcall(function() v:Destroy() end)
+                            end
+                        end
+                    end))
+                end
+
+                -- === Grey sky + full bright + no clouds ===
+                for _, p in savedLightProps do
+                    origLighting[p] = lightingService[p]
+                end
+                -- Remove ALL sky/atmosphere/bloom/sunrays so game can't restore them
+                for _, child in lightingService:GetChildren() do
+                    if child:IsA('Sky') or child:IsA('Atmosphere') or child:IsA('BloomEffect') or child:IsA('SunRaysEffect') then
+                        child.Parent = lightStash
+                    end
+                end
+                -- Disable workspace clouds (Terrain.Clouds)
+                local terrain = workspace:FindFirstChildOfClass('Terrain')
+                if terrain then
+                    local clouds = terrain:FindFirstChildOfClass('Clouds')
+                    if clouds then
+                        origCloudEnabled = clouds.Enabled
+                        clouds.Enabled = false
+                    end
+                end
+                lightingService.Ambient              = Color3.fromRGB(120, 120, 120)
+                lightingService.OutdoorAmbient       = Color3.fromRGB(100, 100, 100)
+                lightingService.Brightness           = BrightnessSlider.Value
+                lightingService.ExposureCompensation = -0.3
+                lightingService.GlobalShadows        = false
+                lightingService.FogColor             = Color3.fromRGB(140, 140, 140)
+                lightingService.FogEnd               = 1200
+                lightingService.FogStart             = 600
+                -- High density so sky background appears solid grey
+                local atmo = Instance.new('Atmosphere')
+                atmo.Density = 0.85
+                atmo.Color   = Color3.fromRGB(145, 145, 145)
+                atmo.Decay   = Color3.fromRGB(125, 125, 125)
+                atmo.Glare   = 0
+                atmo.Haze    = 0
+                atmo.Offset  = 0
+                atmo.Parent  = lightingService
+                table.insert(addedLighting, atmo)
+                -- If game tries to re-add a Sky, immediately remove it
+                KingAuto:Clean(lightingService.ChildAdded:Connect(function(child)
+                    if child:IsA('Sky') or (child:IsA('Atmosphere') and child ~= atmo) then
+                        child.Parent = lightStash
+                    end
+                end))
+                -- Fight game resets of Lighting/Fog properties
+                local lightChanged = false
+                KingAuto:Clean(lightingService.Changed:Connect(function(prop)
+                    if lightChanged then return end
+                    if prop == 'FogEnd' or prop == 'FogStart' or prop == 'FogColor' or
+                       prop == 'Ambient' or prop == 'OutdoorAmbient' or prop == 'Brightness' or
+                       prop == 'ExposureCompensation' or prop == 'GlobalShadows' then
+                        lightChanged = true
+                        lightingService.Ambient              = Color3.fromRGB(120, 120, 120)
+                        lightingService.OutdoorAmbient       = Color3.fromRGB(100, 100, 100)
+                        lightingService.Brightness           = BrightnessSlider.Value
+                        lightingService.ExposureCompensation = -0.3
+                        lightingService.GlobalShadows        = false
+                        lightingService.FogColor             = Color3.fromRGB(140, 140, 140)
+                        lightingService.FogEnd               = 1200
+                        lightingService.FogStart             = 600
+                        lightChanged = false
+                    end
+                end))
+            else
+                -- Restore FFlags (only if they were set)
+                if hasFF then
+                    pcall(setfflag, 'TextureCompositorActiveJobs', '8')
+                    pcall(setfflag, 'RenderShadowIntensity', '1')
+                    pcall(setfflag, 'FRMQualityLevelOverride', '0')
+                    pcall(setfflag, 'GrassMaxDistance', '100')
+                    pcall(setfflag, 'CSGLevelOfDetailSwitchingDistance', '250')
+                    pcall(setfflag, 'CSGLevelOfDetailSwitchingDistanceL12', '400')
+                    pcall(setfflag, 'CSGLevelOfDetailSwitchingDistanceL23', '600')
+                    pcall(setfflag, 'CSGLevelOfDetailSwitchingDistanceL34', '800')
+                    pcall(setfflag, 'DebugPauseVoxelizer', 'False')
+                    pcall(setfflag, 'RenderLocalLightUpdatesMax', '8')
+                    pcall(setfflag, 'RenderLocalLightUpdatesMin', '6')
+                end
+                -- Restore blocks
+                for part in saved do restorePart(part) end
+                table.clear(saved)
+                -- Restore lighting
+                for _, v in addedLighting do v:Destroy() end
+                table.clear(addedLighting)
+                for _, child in lightStash:GetChildren() do
+                    child.Parent = lightingService
+                end
+                for _, p in savedLightProps do
+                    lightingService[p] = origLighting[p]
+                end
+                table.clear(origLighting)
+                -- Restore clouds
+                local terrain = workspace:FindFirstChildOfClass('Terrain')
+                if terrain then
+                    local clouds = terrain:FindFirstChildOfClass('Clouds')
+                    if clouds and origCloudEnabled ~= nil then
+                        clouds.Enabled = origCloudEnabled
+                        origCloudEnabled = nil
+                    end
+                end
+            end
+        end,
+    })
+    BrightnessSlider = KingAuto:CreateSlider({
+        Name = 'Brightness',
+        Min = 0,
+        Max = 10,
+        Default = 2,
+        Tooltip = 'Controls how bright the grey sky looks',
+    })
+end)
+
+
+run(function()
+    local PotESP
+
+    local Reference = {}
+    local Folder = Instance.new('Folder')
+    Folder.Parent = vape.gui
+
+    local function getPos(v)
+        if v:IsA('Model') then
+            local p = v.PrimaryPart or v:FindFirstChildWhichIsA('BasePart')
+            return p and p.Position
+        end
+        return v:IsA('BasePart') and v.Position
+    end
+
+    local function Added(v)
+        if Reference[v] then return end
+        local label = Instance.new('TextLabel')
+        label.Size = UDim2.fromOffset(60, 18)
+        label.AnchorPoint = Vector2.new(0.5, 1)
+        label.BackgroundColor3 = Color3.new(0, 0, 0)
+        label.BackgroundTransparency = 0.4
+        label.BorderSizePixel = 0
+        label.TextSize = 12
+        label.Font = Enum.Font.GothamBold
+        label.TextColor3 = Color3.fromRGB(255, 210, 100)
+        label.Text = 'Pot'
+        label.Visible = false
+        label.RichText = true
+        local corner = Instance.new('UICorner')
+        corner.CornerRadius = UDim.new(0, 4)
+        corner.Parent = label
+        label.Parent = Folder
+        Reference[v] = label
+    end
+
+    local function Removing(v)
+        if Reference[v] then
+            Reference[v]:Destroy()
+            Reference[v] = nil
+        end
+    end
+
+    PotESP = vape.Categories.Render:CreateModule({
+        Name = 'Pot ESP',
+        Function = function(callback)
+            if callback then
+                PotESP:Clean(workspace.DescendantAdded:Connect(function(v)
+                    if v.Name == 'desert_pot' then
+                        task.spawn(Added, v)
+                    end
+                end))
+                PotESP:Clean(workspace.DescendantRemoving:Connect(Removing))
+                PotESP:Clean(runService.PreRender:Connect(function()
+                    local char = lplr.Character
+                    local root = char and char:FindFirstChild('HumanoidRootPart')
+                    for pot, label in Reference do
+                        local pos = getPos(pot)
+                        if not pos then label.Visible = false continue end
+                        local screen, vis = gameCamera:WorldToViewportPoint(pos + Vector3.new(0, 2, 0))
+                        label.Visible = vis
+                        if vis then
+                            local dist = root and math.round((root.Position - pos).Magnitude) or 0
+                            label.Text = string.format('Pot <font color="#aaaaaa">• %dm</font>', dist)
+                            local size = getfontsize(removeTags(label.Text), label.TextSize, label.FontFace, Vector2.new(100000, 100000))
+                            label.Size = UDim2.fromOffset(size.X + 10, size.Y + 6)
+                            label.Position = UDim2.fromOffset(screen.X, screen.Y)
+                        end
+                    end
+                end))
+                for _, v in workspace:GetDescendants() do
+                    if v.Name == 'desert_pot' then
+                        task.spawn(Added, v)
+                    end
+                end
+            else
+                table.clear(Reference)
+                Folder:ClearAllChildren()
+            end
+        end,
+        Tooltip = 'Shows desert pots with distance'
     })
 end)
 
