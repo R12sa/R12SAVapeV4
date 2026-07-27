@@ -7036,6 +7036,7 @@ run(function()
     		local alive = entitylib.isAlive
     		local localPosition = alive and entitylib.character.RootPart.Position
     		for ent, nametag in Reference do
+    			local headPos, headVis
     			local distance
     			if alive and (DistanceCheck.Enabled or Distance.Enabled) then
     				distance = (localPosition - ent.RootPart.Position).Magnitude
@@ -7049,7 +7050,7 @@ run(function()
     				end
     			end
 
-    			local headPos, headVis = gameCamera:WorldToViewportPoint(ent.RootPart.Position + Vector3.new(0, ent.HipHeight + 1, 0))
+    			headPos, headVis = gameCamera:WorldToViewportPoint(ent.RootPart.Position + Vector3.new(0, ent.HipHeight + 1, 0))
     			nametag.Visible = headVis
     			if not headVis then
     				continue
@@ -7076,6 +7077,7 @@ run(function()
     		local alive = entitylib.isAlive
     		local localPosition = alive and entitylib.character.RootPart.Position
     		for ent, nametag in Reference do
+    			local headPos, headVis
     			local distance
     			if alive and (DistanceCheck.Enabled or Distance.Enabled) then
     				distance = (localPosition - ent.RootPart.Position).Magnitude
@@ -7090,7 +7092,7 @@ run(function()
     				end
     			end
 
-    			local headPos, headVis = gameCamera:WorldToViewportPoint(ent.RootPart.Position + Vector3.new(0, ent.HipHeight + 1, 0))
+    			headPos, headVis = gameCamera:WorldToViewportPoint(ent.RootPart.Position + Vector3.new(0, ent.HipHeight + 1, 0))
     			nametag.Text.Visible = headVis
     			nametag.BG.Visible = headVis
     			if not headVis then
