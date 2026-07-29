@@ -45614,6 +45614,18 @@ run(function()
                         elseif DebugMode and DebugMode.Enabled then
                             dbg('[KD] visible bed retry cooldown')
                         end
+
+                        -- small delay to allow strike()'s server response to set damageBlockFail if cancelled
+                        task.wait(0.05)
+
+                        -- fallback: if the direct strike was cancelled, try bedwars.breakBlock (Breaker) if enabled
+                        if store.damageBlockFail > tick() and BreakerFallback and BreakerFallback.Enabled then
+                            if not ItemLimit.Enabled or (store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name] and bedwars.ItemMeta[store.hand.tool.Name].breakBlock) then
+                                bedwars.breakBlock(bestBed, EffectsOn.Enabled, Anim.Enabled, nil, ToolSwitch.Enabled)
+                                if DebugMode and DebugMode.Enabled then dbg('[KD] breaker fallback on visible bed') end
+                            end
+                        end
+
                         task.wait(QuickBreak.Enabled and 0 or 0.25)
                         continue
                     end
@@ -45818,7 +45830,6 @@ run(function()
         Tooltip = 'Prints debug info to console (F9). Press F4 to copy log to clipboard'
     })
 end)
-
 run(function()
     local BedProtector
     local PlaceRange
