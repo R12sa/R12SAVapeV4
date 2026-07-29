@@ -12528,6 +12528,7 @@ run(function()
 		end
 	end
 
+	-- Updated doBreak: respect BreakSpeed when BreakClosest is enabled (unless InstantBreak is explicitly on)
 	local function doBreak(v, isPathBlock)
 		hit += 1
 		if RagnarBreaker and RagnarBreaker.Enabled then
@@ -12535,8 +12536,19 @@ run(function()
 				replicatedStorage:WaitForChild("events-@easy-games/game-core:shared/game-core-networking@getEvents.Events"):WaitForChild("useAbility"):FireServer("berserker_rage")
 			end
 		end
-		if BreakClosest and BreakClosest.Enabled then bedwars.breakClosestMode = true end
-		local target, path, endpos = bedwars.breakBlock(v, Effect.Enabled, Animation.Enabled, wrappedHealthbar, (InstantBreak.Enabled or AutoTool.Enabled) and LimitItem.Enabled)
+
+		if BreakClosest and BreakClosest.Enabled then
+			bedwars.breakClosestMode = true
+		end
+
+		-- compute explicit instant flag; keep original logic but allow BreakClosest to disable it unless InstantBreak is on
+		local instantFlag = ((InstantBreak and InstantBreak.Enabled) or (AutoTool and AutoTool.Enabled)) and (LimitItem and LimitItem.Enabled)
+
+		if BreakClosest and BreakClosest.Enabled and not (InstantBreak and InstantBreak.Enabled) then
+			instantFlag = false
+		end
+
+		local target, path, endpos = bedwars.breakBlock(v, Effect and Effect.Enabled, Animation and Animation.Enabled, wrappedHealthbar, instantFlag)
 		bedwars.breakClosestMode = false
 		if path and ShowPath and ShowPath.Enabled then
 			local placerTier = 0
@@ -12552,7 +12564,7 @@ run(function()
 				currentnode = path[currentnode]
 			end
 		end
-		task.wait(isPathBlock and 0 or (InstantBreak.Enabled and (store.damageBlockFail > tick() and 4.5 or 0) or BreakSpeed.Value))
+		task.wait(isPathBlock and 0 or ((InstantBreak and InstantBreak.Enabled) and (store.damageBlockFail > tick() and 4.5 or 0) or BreakSpeed.Value))
 		return true
 	end
 
