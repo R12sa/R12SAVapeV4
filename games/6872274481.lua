@@ -10332,26 +10332,6 @@ run(function()
 		end
 	end
 	
-	local function getShopController()
-		local success, result = pcall(function()
-			local RuntimeLib = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
-			if RuntimeLib then
-				return RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "TS", "games", "bedwars", "shop", "bedwars-shop")
-			end
-		end)
-		
-		if success then
-			return result
-		end
-		
-		local shopModule = game:GetService("ReplicatedStorage"):FindFirstChild("TS"):FindFirstChild("games"):FindFirstChild("bedwars"):FindFirstChild("shop"):FindFirstChild("bedwars-shop")
-		if shopModule and shopModule:IsA("ModuleScript") then
-			return require(shopModule)
-		end
-		
-		return nil
-	end
-	
 	ShopTierBypass = vape.Categories.Utility:CreateModule({
 		Name = 'ShopTierBypass',
 		Function = function(callback)
@@ -10369,9 +10349,9 @@ run(function()
 						end
 					end
 					
-					local shopController = getShopController()
-					if shopController and shopController.BedwarsShop and shopController.BedwarsShop.getShop then
-						local shopTable = shopController.BedwarsShop.getShop()
+					local shopController = bedwars.Shop
+					if shopController and shopController and shopController.getShop then
+						local shopTable = shopController.getShop()
 						if type(shopTable) == "table" then
 							for _, v in pairs(shopTable) do
 								itemsSeen[v] = true
@@ -10394,12 +10374,12 @@ run(function()
 					end
 				end
 				
-				local shopController = getShopController()
-				if shopController and shopController.BedwarsShop and shopController.BedwarsShop.getShop then
+				local shopController = bedwars.Shop
+				if shopController and shopController and shopController.getShop then
 					if not tiered["shopControllerHooked"] then
 						tiered["shopControllerHooked"] = true
-						local originalControllerGetShop = shopController.BedwarsShop.getShop
-						shopController.BedwarsShop.getShop = function(...)
+						local originalControllerGetShop = shopController.getShop
+						shopController.getShop = function(...)
 							local result = originalControllerGetShop(...)
 							if type(result) == "table" then
 								applyBypassToTable(result)
@@ -10437,6 +10417,7 @@ run(function()
 		Tooltip = 'Lets you buy things like armor and tools early.'
 	})
 end)
+
 	
 run(function()
 	vape.Categories.World:CreateModule({
