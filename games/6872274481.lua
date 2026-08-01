@@ -44734,64 +44734,6 @@ run(function()
 end)
 
 
-Crasher = vape.Categories.Combat:CreateModule({
-    Name = "Crasher",
-    Function = function(callback)
-        if callback then
-            task.spawn(function()
-                repeat
-                    -- Unequip spam - each slot in its own thread
-                    for slot = 0, 2 do
-                        task.spawn(function()
-                            for i = 1, 9e9 do
-                                local args = {
-                                    {
-                                        item = false,
-                                        armorSlot = slot
-                                    }
-                                }
-                                game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("node_modules"):WaitForChild("@rbxts"):WaitForChild("net"):WaitForChild("out"):WaitForChild("_NetManaged"):WaitForChild("SetArmorInvItem"):InvokeServer(unpack(args))
-                            end
-                        end)
-                    end
-                    
-                    -- Equip spam - each armor piece in its own thread
-                    for i, v in ipairs(inv:GetChildren()) do
-                        local itemName = v.Name:lower()
-                        local armorSlot = nil
-                        
-                        if itemName:find("helmet") then
-                            armorSlot = 0
-                        elseif itemName:find("chestplate") then
-                            armorSlot = 1
-                        elseif itemName:find("boots") then
-                            armorSlot = 2
-                        end
-                        
-                        if armorSlot and (itemName:find("leather") or itemName:find("iron") or itemName:find("diamond") or itemName:find("emerald")) then
-                            task.spawn(function()
-                                for i = 1, 9e9 do
-                                    local args = {
-                                        {
-                                            item = inv:WaitForChild(v.Name),
-                                            armorSlot = armorSlot
-                                        }
-                                    }
-                                    game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("node_modules"):WaitForChild("@rbxts"):WaitForChild("net"):WaitForChild("out"):WaitForChild("_NetManaged"):WaitForChild("SetArmorInvItem"):InvokeServer(unpack(args))
-                                end
-                            end)
-                        end
-                    end
-                    
-                    task.wait() 
-                until not Crasher.Enabled
-            end)
-        end
-    end,
-})
-
-
-
 
 run(function()
     local NoFall
