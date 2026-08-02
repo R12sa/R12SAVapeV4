@@ -10307,108 +10307,172 @@ run(function()
 	local tiered, nexttier = {}, {}
 	local originalGetShop
 	local shopItemsTracked = {}
-	
-	local function applyBypassToItem(item)
-		if item and type(item) == "table" then
-			if not tiered[item] then 
-				tiered[item] = item.tiered 
+	local replacements = {}            -- { owner = tbl, key = idxOrKey, original = value }
+	local proxyCache = setmetatable({}, { __mode = "k" }) -- original -> proxy
+	local wrappedOwners = setmetatable({}, { __mode = "k" }) -- mark tables whose getShop we wrapped
+
+	local function safeIndex(orig, k)
+		local ok, v = pcall(function() return orig[k] end)
+		if ok then return v end
+		-- if userdata (Instance) try GetAttribute if available
+		ok, v = pcall(function()
+			if type(orig) == "userdata" and orig.GetAttribute then
+				return orig:GetAttribute(k)
 			end
-			if not nexttier[item] then 
-				nexttier[item] = item.nextTier 
-			end
-			item.nextTier = nil
-			item.tiered = nil
-			shopItemsTracked[item] = true
-		end
+		end)
+		if ok then return v end
+		return nil
 	end
-	
-	local function applyBypassToTable(tbl)
-		if tbl and type(tbl) == "table" then
-			for _, item in pairs(tbl) do
+
+	local function safeNewIndex(orig, k, v)
+		pcall(function()
+			if type(orig) == "table" then
+				orig[k] = v
+			elseif type(orig) == "userdata" and orig.SetAttribute then
+				orig:SetAttribute(k, v)
+			else
+				-- best-effort fallback
+				orig[k] = v
+			end
+		end)
+	end
+
+	local function makeProxyFor(item)
+		if not item then return item end
+		if proxyCache[item] then return proxyCache[item] end
+
+		local proxy = {}
+		setmetatable(proxy, {
+			__index = function(_, k)
+				if k == "tiered" or k == "nextTier" then
+					return nil
+				end
+				return safeIndex(item, k)
+			end,
+			__newindex = function(_, k, v)
+				-- forward writes back to the original item
+				safeNewIndex(item, k, v)
+			end,
+			__pairs = function()
 				if type(item) == "table" then
-					applyBypassToItem(item)
+					return pairs(item)
+				end
+				return function() end
+			end,
+			__ipairs = function()
+				if type(item) == "table" then
+					return ipairs(item)
+				end
+				return function() end
+			end,
+			__tostring = function() return tostring(item) end,
+		})
+
+		proxyCache[item] = proxy
+		return proxy
+	end
+
+	local function applyBypassToTable(tbl)
+		if not tbl or type(tbl) ~= "table" then return end
+		-- record that we touched this owner table
+		shopItemsTracked[tbl] = true
+		for k, v in pairs(tbl) do
+			if v ~= nil and (type(v) == "table" or type(v) == "userdata") then
+				local proxy = makeProxyFor(v)
+				if proxy ~= v then
+					table.insert(replacements, { owner = tbl, key = k, original = v })
+					tbl[k] = proxy
 				end
 			end
 		end
 	end
-	
+
+	local function applyBypassToExistingShopArrays()
+		pcall(function()
+			if bedwars and bedwars.Shop and type(bedwars.Shop.ShopItems) == "table" then
+				applyBypassToTable(bedwars.Shop.ShopItems)
+			end
+		end)
+		pcall(function()
+			if bedwars and type(bedwars.ShopItems) == "table" then
+				applyBypassToTable(bedwars.ShopItems)
+			end
+		end)
+	end
+
+	local function wrapGetShopFunction(tblOwner, fnName)
+		if not tblOwner or type(tblOwner[fnName]) ~= "function" or wrappedOwners[tblOwner] then return end
+		wrappedOwners[tblOwner] = true
+		local orig = tblOwner[fnName]
+		-- keep a global original for bedwars.Shop.getShop if it's the first one we saw
+		if tblOwner == bedwars.Shop and fnName == "getShop" and not originalGetShop then
+			originalGetShop = orig
+		end
+		tblOwner[fnName] = function(...)
+			local result = orig(...)
+			if type(result) == "table" then
+				-- If function returned a table-of-items, replace entries with proxies
+				applyBypassToTable(result)
+			end
+			return result
+		end
+	end
+
 	ShopTierBypass = vape.Categories.Utility:CreateModule({
 		Name = 'ShopTierBypass',
 		Function = function(callback)
 			if callback then
-				local function collectAndBypass()
-					local itemsSeen = {}
-					if bedwars.Shop and bedwars.Shop.ShopItems then
-						for _, v in pairs(bedwars.Shop.ShopItems) do
-							itemsSeen[v] = true
+				-- enable: apply to existing arrays and hook getShop(s)
+				applyBypassToExistingShopArrays()
+
+				pcall(function()
+					if bedwars and bedwars.Shop and type(bedwars.Shop.getShop) == "function" then
+						-- store/replace global shop getShop
+						if not originalGetShop then
+							originalGetShop = bedwars.Shop.getShop
 						end
-					end
-					if bedwars.ShopItems then
-						for _, v in pairs(bedwars.ShopItems) do
-							itemsSeen[v] = true
-						end
-					end
-					
-					local shopController = bedwars.Shop
-					if shopController and shopController and shopController.getShop then
-						local shopTable = shopController.getShop()
-						if type(shopTable) == "table" then
-							for _, v in pairs(shopTable) do
-								itemsSeen[v] = true
-							end
-						end
-					end
-					for item, _ in pairs(itemsSeen) do
-						applyBypassToItem(item)
-					end
-				end
-				collectAndBypass()
-				if bedwars.Shop and bedwars.Shop.getShop and not originalGetShop then
-					originalGetShop = bedwars.Shop.getShop
-					bedwars.Shop.getShop = function(...)
-						local result = originalGetShop(...)
-						if type(result) == "table" then
-							applyBypassToTable(result)
-						end
-						return result
-					end
-				end
-				
-				local shopController = bedwars.Shop
-				if shopController and shopController and shopController.getShop then
-					if not tiered["shopControllerHooked"] then
-						tiered["shopControllerHooked"] = true
-						local originalControllerGetShop = shopController.getShop
-						shopController.getShop = function(...)
-							local result = originalControllerGetShop(...)
+						bedwars.Shop.getShop = function(...)
+							local result = originalGetShop(...)
 							if type(result) == "table" then
 								applyBypassToTable(result)
 							end
 							return result
 						end
 					end
-				end
-			else
-				for item, _ in pairs(shopItemsTracked) do
-					if item and type(item) == "table" then
-						if tiered[item] ~= nil then
-							item.tiered = tiered[item]
-						end
-						if nexttier[item] ~= nil then
-							item.nextTier = nexttier[item]
-						end
+				end)
+
+				-- also wrap the controller's getShop (if different object)
+				pcall(function()
+					local shopController = bedwars and bedwars.Shop
+					if shopController and type(shopController.getShop) == "function" then
+						wrapGetShopFunction(shopController, "getShop")
 					end
+				end)
+			else
+				-- disable: restore replaced entries
+				for i = #replacements, 1, -1 do
+					local rec = replacements[i]
+					local ok = pcall(function()
+						-- only restore if owner still exists
+						if rec.owner and type(rec.owner) == "table" then
+							rec.owner[rec.key] = rec.original
+						end
+					end)
+					-- ignore pcall result; continue restoring others
 				end
-				
-				if tiered["shopControllerHooked"] then
-					tiered["shopControllerHooked"] = nil
-				end
-				
-				if originalGetShop then
-					bedwars.Shop.getShop = originalGetShop
-					originalGetShop = nil
-				end
-				
+
+				-- restore hooked getShop if we kept original
+				pcall(function()
+					if originalGetShop and bedwars and bedwars.Shop then
+						bedwars.Shop.getShop = originalGetShop
+						originalGetShop = nil
+					end
+				end)
+
+				-- clear state
+				replacements = {}
+				proxyCache = setmetatable({}, { __mode = "k" })
+				wrappedOwners = setmetatable({}, { __mode = "k" })
 				table.clear(tiered)
 				table.clear(nexttier)
 				table.clear(shopItemsTracked)
