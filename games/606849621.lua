@@ -791,4 +791,4 @@ run(function()
 		Tooltip = 'Enables most doors to be walked through'
 	})
 end)
-	
+
