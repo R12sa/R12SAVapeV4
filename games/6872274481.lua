@@ -23,7 +23,6 @@ local function safeGetProto(func, index)
         return proto
     end
 end
-
 local inventoryDebounce = false
 local function fireInventoryChanged()
     if inventoryDebounce then return end
